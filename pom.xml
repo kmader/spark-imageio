@@ -8,12 +8,13 @@
         <version>5.0</version>
         <relativePath />
     </parent>
+
     <groupId>fourquant</groupId>
-    <artifactId>spark-scifio</artifactId>
+    <artifactId>spark-imageio</artifactId>
     <version>1.0-SNAPSHOT</version>
 
-    <name>Apache Spark Scifio Integration</name>
-    <description>Integrating Scifio into Apache Spark for loading and saving images inside Spark and PySpark</description>
+    <name>Apache Spark ImageIO Integration</name>
+    <description>Integrating ImageIO and tile reading into spark</description>
 
     <properties>
         <scala.major>2.10</scala.major>
@@ -47,20 +48,9 @@
         </dependency>
 
         <dependency>
-            <groupId>net.imglib2</groupId>
-            <artifactId>imglib2</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>net.imglib2</groupId>
-            <artifactId>imglib2-realtransform</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>net.imglib2</groupId>
-            <artifactId>imglib2-ui</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>net.imglib2</groupId>
-            <artifactId>imglib2-algorithm</artifactId>
+            <groupId>org.geotoolkit</groupId>
+            <artifactId>geotk-coverageio</artifactId>
+            <version>3.21</version>
         </dependency>
 
         <dependency>
@@ -112,6 +102,12 @@
         <repository>
             <id>imagej.public</id>
             <url>http://maven.imagej.net/content/groups/public</url>
+        </repository>
+        <repository>
+            <!-- Not needed for "*-geoapi-3.0" versions -->
+            <id>geotoolkit</id>
+            <name>Geotk repository</name>
+            <url>http://maven.geotoolkit.org</url>
         </repository>
         <repository>
             <id>apache-repo</id>
