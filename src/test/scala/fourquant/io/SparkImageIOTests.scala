@@ -5,7 +5,9 @@ import org.scalatest.{FunSuite, Matchers}
 import fourquant.io.ImageIOOps._
 
 class SparkImageIOTests extends FunSuite with Matchers {
-  lazy val sc = new SparkContext("local[4]","Test")
+  //lazy val sc = new SparkContext("local[4]","Test")
+
+  lazy val sc = new SparkContext("spark://MacBook-Air.local:7077","Test")
   val testDataDir = "/Users/mader/Dropbox/Informatics/spark-imageio/test-data/"
   test("Load image in big tiles") {
     val tImg = sc.readTiledDoubleImage(testDataDir+"Hansen_GFC2014_lossyear_00N_000E.tif",
@@ -21,8 +23,20 @@ class SparkImageIOTests extends FunSuite with Matchers {
     val imgHist = tImg.flatMap{
       case(blockpos,blockdata) =>
         for(cval <- blockdata.flatten) yield cval
-    }.histogram(100)
+    }//.histogram(100)
 
+  }
+
+  test("Cloud Test") {
+    sc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId","AKIAJM4PPKISBYXFZGKA")
+    sc.hadoopConfiguration.set("fs.s3n.awsSecretAccessKey","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")
+    val tiledImage = sc.readTiledDoubleImage("s3n://geo-images/*.tif",1000,10000,40)
+
+    tiledImage.first._2.length shouldBe 10000
+    tiledImage.first._2(0).length shouldBe 1000
+
+    val lengthImage = tiledImage.mapValues(_.length)
+    tiledImage.count shouldBe 160
   }
 
 

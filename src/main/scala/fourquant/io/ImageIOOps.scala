@@ -2,7 +2,7 @@ package fourquant.io
 
 import java.awt.Rectangle
 import java.awt.image.BufferedImage
-import java.io.{File, FileInputStream, InputStream}
+import java.io._
 import javax.imageio.ImageIO
 import javax.imageio.spi.IIORegistry
 import javax.imageio.stream.ImageInputStream
@@ -27,16 +27,27 @@ object ImageIOOps extends Serializable {
   }
   case class ImageInfo(count: Int, height: Int, width: Int, info: String)
 
-  private [io] def createStream(input: InputStream) = ImageIO.createImageInputStream(input)
-  private [io] def getReader(stream: ImageInputStream) = {
+  def createStream(input: InputStream) = ImageIO.createImageInputStream(input)
+
+  def getReader(stream: ImageInputStream,suffix: Option[String] = None) = {
     stream.seek(0)
-    ImageIO.getImageReaders(stream).toList.headOption.map(reader => {
+    val sufReader = for(sf<-suffix;
+                        foundReader <- ImageIO.getImageReadersBySuffix(sf).toList.headOption)
+                              yield foundReader
+    val streamReader = ImageIO.getImageReaders(stream).toList.headOption
+    val bestReader = (sufReader,streamReader) match {
+      case (Some(reader),_) => Some(reader) // prefer the suffix based reader
+      case (None,Some(reader)) => Some(reader)
+      case (None,None) => None
+    }
+    bestReader.map(reader => {
       reader.setInput(stream)
       reader
     })
   }
 
-  private [io] def getImageInfo(stream: ImageInputStream) = {
+
+  def getImageInfo(stream: ImageInputStream) = {
     getReader(stream) match {
       case Some(reader) =>
         ImageInfo(reader.getNumImages(true),reader.getHeight(0),reader.getWidth(0),
@@ -47,12 +58,15 @@ object ImageIOOps extends Serializable {
   }
 
   def readTile(infile: File, x: Int, y: Int, w: Int, h: Int): Option[BufferedImage] =
-    readTile(createStream(new FileInputStream(infile)),x,y,w,h)
+    readTile(createStream(new FileInputStream(infile)),
+      infile.getName().split("[.]").reverse.headOption,
+      x,y,w,h)
 
-  private[io] def readTile(stream: ImageInputStream, x: Int, y: Int, w: Int, h: Int):
+  private[io] def readTile(stream: ImageInputStream, suffix: Option[String],
+                           x: Int, y: Int, w: Int, h: Int):
    Option[BufferedImage]= {
     val sourceRegion = new Rectangle(x, y, w, h) // The region you want to extract
-    getReader(stream) match {
+    getReader(stream,suffix) match {
       case Some(reader) =>
         val param = reader.getDefaultReadParam()
         param.setSourceRegion(sourceRegion); // Set region
@@ -62,15 +76,15 @@ object ImageIOOps extends Serializable {
     }
   }
 
-  private[io] def readTileArray[T: ArrayImageMapping](stream: ImageInputStream,
+  def readTileArray[T: ArrayImageMapping](stream: ImageInputStream,suffix: Option[String],
     x: Int, y: Int, w: Int, h: Int): Option[Array[Array[T]]] = {
-    readTile(stream,x,y,w,h).map(_.as2DArray[T])
+    readTile(stream,suffix,x,y,w,h).map(_.as2DArray[T])
   }
 
-  private[io] def readTileDouble(stream: ImageInputStream,
+  private[io] def readTileDouble(stream: ImageInputStream,suffix: Option[String],
                                                       x: Int, y: Int, w: Int, h: Int):
   Option[Array[Array[Double]]] = {
-    readTile(stream,x,y,w,h).map(_.as2DArray[Double])
+    readTile(stream,suffix,x,y,w,h).map(_.as2DArray[Double])
   }
 
   private def roundDown(a: Int, b: Int): Int = {
@@ -80,17 +94,60 @@ object ImageIOOps extends Serializable {
     }
   }
 
-  private[io] def makeTileROIS(fullWidth: Int, fullHeight: Int, tileWidth: Int, tileHeight: Int) = {
-    // Float.MinPositiveValue means it rounds down at 1.00
+  def makeTileROIS(fullWidth: Int, fullHeight: Int, tileWidth: Int, tileHeight: Int) = {
     val endXtile =roundDown(fullWidth, tileWidth)
     val endYtile = roundDown(fullHeight,tileHeight)
     for(stx <- 0 to endXtile; sty<- 0 to endYtile)
       yield (stx*tileWidth,sty*tileHeight,tileWidth,tileHeight)
   }
 
+  private[io] object Utils {
+    def cachePDS(pds: PortableDataStream): InputStream =
+      new ByteArrayInputStream(pds.toArray())
+
+    /**
+     *
+     * @param filepath the given file path
+     * @return if it is a local file
+     */
+    private def isPathLocal(filepath: String): Boolean = {
+      try {
+        new File(filepath).exists()
+      } catch {
+        case _ => false
+      }
+    }
+    /**
+     * Provides a local path for opening a PortableDataStream
+     * @param pds
+     * @param suffix
+     * @return
+     */
+    private def flattenPDS(pds: PortableDataStream, suffix: String): String = {
+      if (isPathLocal(pds.getPath)) {
+        pds.getPath
+      } else {
+        println("Copying PDS Resource....")
+        val bais = new ByteArrayInputStream(pds.toArray())
+        val tempFile = File.createTempFile("spio","."+suffix)
+        org.apache.commons.io.IOUtils.copy(bais,new FileOutputStream(tempFile))
+        tempFile.getAbsolutePath
+      }
+    }
+  }
 
 
   implicit class iioSC(sc: SparkContext) extends Serializable {
+    /**
+     * Load the image(s) as a series of 2D tiles
+     * @param path hadoop-style path to the image files (can contain wildcards)
+     * @param tileWidth
+     * @param tileHeight
+     * @param partitionCount number of partitions (cores * 2-4)
+     * @tparam T (the type of the output image)
+     * @return an RDD with a key of the image names, and tile coordinates, and a value of the data
+     *         as a 2D array typed T
+     */
     def readTiledImage[T : ArrayImageMapping](path: String, tileWidth: Int, tileHeight: Int,
                                              partitionCount: Int
                                                ) = {
@@ -108,10 +165,14 @@ object ImageIOOps extends Serializable {
           var streamLog = new mutable.HashMap[String,ImageInputStream]()
           for (cTileChunk <- inPart;
                curPath = cTileChunk._1;
-               curStream = streamLog.getOrElseUpdate(curPath,createStream(cTileChunk._2._1.open));
+               suffix =  curPath.split("[.]").reverse.headOption;
+               /*curStream = streamLog.getOrElseUpdate(curPath,
+                 createStream(cTileChunk._2._1.open())); **/
+                // for now read the tile everytime
+                curStream = createStream(cTileChunk._2._1.open());
                 sx = cTileChunk._2._2._1;
                 sy = cTileChunk._2._2._2;
-               curTile <- readTileArray[T](curStream,sx,sy, tileWidth,tileHeight)
+               curTile <- readTileArray[T](curStream,suffix,sx,sy, tileWidth,tileHeight)
           )
             yield ((curPath,sx,sy),curTile)
       }
