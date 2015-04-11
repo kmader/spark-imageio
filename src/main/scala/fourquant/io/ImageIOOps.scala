@@ -20,7 +20,7 @@ import scala.collection.mutable
  * Created by mader on 2/27/15.
  */
 object ImageIOOps extends Serializable {
-
+  val verbose = false
   import org.geotoolkit.image.io.plugin.RawTiffImageReader
   { // append the tiff file reading
     val registry = IIORegistry.getDefaultInstance()
@@ -37,7 +37,7 @@ object ImageIOOps extends Serializable {
                         foundReader <- ImageIO.getImageReadersBySuffix(sf).toList)
                               yield foundReader)
     val streamReader = ImageIO.getImageReaders(stream).toList
-    println("\tTotal Readers found:"+sufReader.length+", "+streamReader.length)
+    if (verbose) println("\tTotal Readers found:"+sufReader.length+", "+streamReader.length)
     val bestReader = (sufReader.headOption,streamReader.headOption) match {
       case (Some(reader),_) => Some(reader) // prefer the suffix based reader
       case (None,Some(reader)) => Some(reader)

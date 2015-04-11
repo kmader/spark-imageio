@@ -15,7 +15,7 @@ class ImageIOTests extends FunSuite with Matchers {
   val testDataDir = "/Users/mader/Dropbox/Informatics/spark-imageio/test-data/"
   val bigImage = testDataDir + "Hansen_GFC2014_lossyear_00N_000E.tif"
   val verbose = false
-  val heavy = true
+  val heavy = false
 
   test("Load a tile from a test image multiple times") {
     val is = ImageTestFunctions.makeVSImg(500, 500, "tif")
@@ -172,11 +172,12 @@ class ImageIOTests extends FunSuite with Matchers {
       new FileInputStream(new File(bigImage))
     )
 
-    ImageIOOps.readTileArray[Char](is, Some("tif"),36000,8000,2000,2000) match {
+    ImageIOOps.readTileArray[Char](is, Some("tif"),36000,6000,2000,2000) match {
       case Some(cTile) =>
         cTile.flatten.min shouldBe 0
         cTile.flatten.max shouldBe 13
-        cTile.flatten.map(_.toDouble) shouldBe 1785.0 +- 0.5
+        cTile.flatten.map(_.toDouble).sum shouldBe 1785.0 +- 0.5
+        println("Non Zero Elements:"+cTile.flatten.filter(_>0).length)
       case None =>
         false shouldBe true
     }
