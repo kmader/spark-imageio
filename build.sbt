@@ -30,4 +30,7 @@ pomExtra := (
     </developer>
   </developers>)
 
+libraryDependencies += "org.geotoolkit" %% "geotk-coverageio" % "3.21" 
+libraryDependencies += "org.nd4j" %% "nd4j-jblas" % "0.0.3.5.5.2" 
 libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.4" % "test"
+

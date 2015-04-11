@@ -17,6 +17,7 @@
     <description>Integrating ImageIO and tile reading into spark</description>
 
     <properties>
+        <spio.version>1.0-SNAPSHOT</spio.version>
         <tipl.version>1.0-SNAPSHOT</tipl.version>
         <spark.version>1.3.0</spark.version>
         <nd4j.version>0.0.3.5.5.2</nd4j.version>
@@ -47,18 +48,18 @@
 
 
     <dependencies>
-
-        <dependency>
-            <groupId>net.imagej</groupId>
-            <artifactId>imagej</artifactId>
-        </dependency>
-
-
         <!-- for tiff imageio support and other geo-formats -->
         <dependency>
             <groupId>org.geotoolkit</groupId>
             <artifactId>geotk-coverageio</artifactId>
             <version>3.21</version>
+        </dependency>
+
+        <!-- for scifio support -->
+        <dependency>
+            <groupId>fourquant</groupId>
+            <artifactId>spark-scifio</artifactId>
+            <version>${spio.version}</version>
         </dependency>
 
         <!-- for numerics and gpu code -->
@@ -83,11 +84,6 @@
             <scope>test</scope>
         </dependency>
 
-        <dependency>
-            <groupId>org.scala-lang</groupId>
-            <artifactId>scala-library</artifactId>
-            <version>${scala.version}</version>
-        </dependency>
 
         <dependency>
             <groupId>org.apache.spark</groupId>

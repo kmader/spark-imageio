@@ -2,14 +2,18 @@ package fourquant.io
 
 import java.awt.image.{BufferedImage, DataBufferByte, Raster}
 
+import org.apache.spark.annotation.Experimental
 import org.nd4j.linalg.factory.Nd4j
 
 import scala.reflect.ClassTag
 
 /**
+ * Operations for dealing with bufferedimage objects and arrays, a very generic interface for
+ * converting back and forth so other rescaling tools can easily be placed on top
  * Created by mader on 4/11/15.
  */
 object BufferedImageOps {
+
   val ALPHA_POS = 0
   val RED_POS = 1
   val GREEN_POS = 2
@@ -17,13 +21,18 @@ object BufferedImageOps {
 
 
   /**
-   * Convert the value from a buffered image to an array of type T
+   * Convert the value from a buffered image to an array of type T (and back, but they needn't
+   * both be implemented full
    * @tparam T
    */
   trait ImageMapping[T] extends Serializable {
     def fromFloat(d: Float): T
     def fromInt(d: Int): T
     def fromARGB(d: Array[Byte]): T
+
+    def toFloat(d: T): Float
+    def toInt(d: T): Int
+    def toARGB(d: T): Array[Byte]
   }
 
 
@@ -36,10 +45,15 @@ object BufferedImageOps {
     def fromFloatArr(d: Array[Float]): Array[T] = d.map(fromFloat(_))
     def fromIntArr(d: Array[Int]): Array[T] = d.map(fromInt(_))
     def fromARGBArr(d: Array[Array[Byte]]): Array[T] = d.map(fromARGB(_))
+
+    def toFloatArr(d: Array[T]): Array[Float] = d.map(toFloat(_))
+    def toIntArr(d: Array[T]): Array[Int] = d.map(toInt(_))
+    def toARGBArr(d: Array[T]): Array[Array[Byte]] = d.map(toARGB(_))
   }
 
 
-  class DoubleImageMapping(implicit val oct: ClassTag[Double]) extends ArrayImageMapping[Double] {
+  class SimpleDoubleImageMapping(implicit val oct: ClassTag[Double]) extends
+  ArrayImageMapping[Double] {
     override def fromFloat(d: Float): Double = d
 
     override def fromARGB(d: Array[Byte]): Double =
@@ -51,10 +65,56 @@ object BufferedImageOps {
     override def fromIntArr(d: Array[Int]) = d.map(_.toDouble)
 
     override def ct: ClassTag[Double] = oct
+
+    override def toFloat(d: Double): Float = d.toFloat
+
+    override def toInt(d: Double): Int = d.toInt
+
+    override def toARGB(d: Double): Array[Byte] = Array.fill(4)(d.toByte)
   }
 
-  implicit val im = new DoubleImageMapping
+  @Experimental
+  @deprecated("Not sure if this works at all","0.0")
+  class SimpleByteImageMapping(implicit val oct: ClassTag[Byte]) extends
+  ArrayImageMapping[Byte] {
+    override implicit def ct: ClassTag[Byte] = oct
 
+    override def fromARGB(d: Array[Byte]): Byte =
+      ((d(RED_POS).toDouble+d(BLUE_POS).toDouble+d(GREEN_POS).toDouble)/3.0).toByte
+
+    override def toFloat(d: Byte): Float = d.toFloat
+
+    override def toInt(d: Byte): Int = d.toInt
+
+    override def fromInt(d: Int): Byte = (d & 0xff).toByte
+
+    override def toARGB(d: Byte): Array[Byte] = Array.fill(4)(d)
+
+    override def fromFloat(d: Float): Byte = d.toByte //TODO not a good idea
+  }
+
+  class SimpleCharImageMapping(implicit val oct: ClassTag[Char]) extends
+  ArrayImageMapping[Char] {
+    override implicit def ct: ClassTag[Char] = oct
+
+    override def fromARGB(d: Array[Byte]) =
+      ((d(RED_POS).toDouble+d(BLUE_POS).toDouble+d(GREEN_POS).toDouble)/3.0).toChar
+
+    override def toFloat(d: Char): Float = d.toFloat
+
+    override def toInt(d: Char): Int = d.toInt
+
+    override def fromInt(d: Int) = (d & 0xff).toChar
+
+    override def toARGB(d: Char): Array[Byte] = Array.fill(4)(d.toByte)
+
+    override def fromFloat(d: Float) = d.toChar //TODO not a good idea
+  }
+
+
+  implicit val doubleImageSupport = new SimpleDoubleImageMapping
+  implicit val byteImageSupport = new SimpleByteImageMapping
+  implicit val charImageSupport = new SimpleCharImageMapping
 
   /**
    * Implement all of the basic conversion functions on a bufferimage

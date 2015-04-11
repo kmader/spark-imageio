@@ -8,6 +8,7 @@ import javax.imageio.spi.IIORegistry
 import javax.imageio.stream.ImageInputStream
 
 import fourquant.io.BufferedImageOps._
+import fourquant.tiles.TilingStrategy2D
 import org.apache.spark.SparkContext
 import org.apache.spark.input.PortableDataStream
 
@@ -30,12 +31,14 @@ object ImageIOOps extends Serializable {
   def createStream(input: InputStream) = ImageIO.createImageInputStream(input)
 
   def getReader(stream: ImageInputStream,suffix: Option[String] = None) = {
+    // reset the stream to beginning (if possible)
     stream.seek(0)
-    val sufReader = for(sf<-suffix;
-                        foundReader <- ImageIO.getImageReadersBySuffix(sf).toList.headOption)
-                              yield foundReader
-    val streamReader = ImageIO.getImageReaders(stream).toList.headOption
-    val bestReader = (sufReader,streamReader) match {
+    val sufReader = (for(sf<-suffix.toList;
+                        foundReader <- ImageIO.getImageReadersBySuffix(sf).toList)
+                              yield foundReader)
+    val streamReader = ImageIO.getImageReaders(stream).toList
+    println("\tTotal Readers found:"+sufReader.length+", "+streamReader.length)
+    val bestReader = (sufReader.headOption,streamReader.headOption) match {
       case (Some(reader),_) => Some(reader) // prefer the suffix based reader
       case (None,Some(reader)) => Some(reader)
       case (None,None) => None
@@ -64,14 +67,20 @@ object ImageIOOps extends Serializable {
 
   private[io] def readTile(stream: ImageInputStream, suffix: Option[String],
                            x: Int, y: Int, w: Int, h: Int):
-   Option[BufferedImage]= {
+   Option[BufferedImage] = {
     val sourceRegion = new Rectangle(x, y, w, h) // The region you want to extract
+
     getReader(stream,suffix) match {
       case Some(reader) =>
         val param = reader.getDefaultReadParam()
         param.setSourceRegion(sourceRegion); // Set region
-        val oBM = reader.read(0, param)
-        Some(oBM) // Will read only the region specified
+        try {
+          Some(reader.read(0, param))
+        } catch {
+          case  _ : Throwable =>
+            System.err.println("Image cannot be loaded, or likely is out of bounds, returning none")
+            None
+        }
       case None => None
     }
   }
@@ -87,19 +96,24 @@ object ImageIOOps extends Serializable {
     readTile(stream,suffix,x,y,w,h).map(_.as2DArray[Double])
   }
 
-  private def roundDown(a: Int, b: Int): Int = {
-    a % b match {
-      case 0 => Math.floor(a/b).toInt-1
-      case _ => Math.floor(a*1.0/b).toInt
+
+
+  def readImageAsTiles[T: ArrayImageMapping](stream: ImageInputStream,suffix: Option[String],
+                                              tileWidth: Int, tileHeight: Int)(
+    implicit ts: TilingStrategy2D) = {
+    val info = getImageInfo(stream)
+    ts.createTiles2D(info.width,info.height,tileWidth,tileHeight).flatMap {
+      case (x, y, width, height) =>
+        for(cTile<-readTileArray[T](stream,suffix,x,y,width,height))
+          yield ((x,y),cTile)
     }
   }
 
-  def makeTileROIS(fullWidth: Int, fullHeight: Int, tileWidth: Int, tileHeight: Int) = {
-    val endXtile =roundDown(fullWidth, tileWidth)
-    val endYtile = roundDown(fullHeight,tileHeight)
-    for(stx <- 0 to endXtile; sty<- 0 to endYtile)
-      yield (stx*tileWidth,sty*tileHeight,tileWidth,tileHeight)
+
+  def scifioReadTile() = {
+
   }
+
 
   private[io] object Utils {
     def cachePDS(pds: PortableDataStream): InputStream =
@@ -114,7 +128,7 @@ object ImageIOOps extends Serializable {
       try {
         new File(filepath).exists()
       } catch {
-        case _ => false
+        case _: Throwable => false
       }
     }
     /**
@@ -136,6 +150,9 @@ object ImageIOOps extends Serializable {
     }
   }
 
+  implicit class scifioSC(sc: SparkContext) extends Serializable {
+
+  }
 
   implicit class iioSC(sc: SparkContext) extends Serializable {
     /**
@@ -150,14 +167,14 @@ object ImageIOOps extends Serializable {
      */
     def readTiledImage[T : ArrayImageMapping](path: String, tileWidth: Int, tileHeight: Int,
                                              partitionCount: Int
-                                               ) = {
+                                               )(implicit ts: TilingStrategy2D) = {
       sc.binaryFiles(path).mapValues{
         case pds: PortableDataStream =>
           val imInfo = getImageInfo(createStream(pds.open()))
           (pds,imInfo)
       }.flatMapValues{
         case (pds: PortableDataStream, info: ImageInfo) =>
-          for(cTile <- makeTileROIS(info.width,info.height,tileWidth,tileHeight))
+          for(cTile <- ts.createTiles2D(info.width,info.height,tileWidth,tileHeight))
             yield (pds,cTile)
       }.repartition(partitionCount).mapPartitions{
         inPart =>
@@ -177,11 +194,10 @@ object ImageIOOps extends Serializable {
             yield ((curPath,sx,sy),curTile)
       }
     }
+
     def readTiledDoubleImage(path: String, tileWidth: Int, tileHeight: Int,
-                              partitionCount: Int) =
+                              partitionCount: Int)(implicit ts: TilingStrategy2D) =
       readTiledImage[Double](path,tileWidth,tileHeight,partitionCount)
   }
-
-
 
 }
