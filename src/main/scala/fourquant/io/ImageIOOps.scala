@@ -110,6 +110,26 @@ object ImageIOOps extends Serializable {
   }
 
 
+  /**
+   * Keep all the scifio related tools together
+   */
+  object Scifio extends Serializable{
+    def readImageAsTiles(path: String, tileWidth: Int, tileHeight: Int)(
+      implicit ts: TilingStrategy2D) = {
+      val (creader,meta) = ScifioOps.readPath(path)
+      val imgMeta = meta.get(0)
+      val axLen = imgMeta.getAxesLengths()
+      val width = axLen(0).toInt
+      val height = axLen(1).toInt
+      ts.createTiles2D(width,height,tileWidth,tileHeight).map {
+        case (x, y, width, height) =>
+           ((x,y),creader.openPlane(0,0,Array[Long](x,y),Array[Long](width,height)))
+      }
+    }
+  }
+
+
+
   def scifioReadTile() = {
 
   }
