@@ -129,45 +129,8 @@ object ImageIOOps extends Serializable {
   }
 
 
-
   def scifioReadTile() = {
 
-  }
-
-
-  private[io] object Utils {
-    def cachePDS(pds: PortableDataStream): InputStream =
-      new ByteArrayInputStream(pds.toArray())
-
-    /**
-     *
-     * @param filepath the given file path
-     * @return if it is a local file
-     */
-    private def isPathLocal(filepath: String): Boolean = {
-      try {
-        new File(filepath).exists()
-      } catch {
-        case _: Throwable => false
-      }
-    }
-    /**
-     * Provides a local path for opening a PortableDataStream
-     * @param pds
-     * @param suffix
-     * @return
-     */
-    private def flattenPDS(pds: PortableDataStream, suffix: String): String = {
-      if (isPathLocal(pds.getPath)) {
-        pds.getPath
-      } else {
-        println("Copying PDS Resource....")
-        val bais = new ByteArrayInputStream(pds.toArray())
-        val tempFile = File.createTempFile("spio","."+suffix)
-        org.apache.commons.io.IOUtils.copy(bais,new FileOutputStream(tempFile))
-        tempFile.getAbsolutePath
-      }
-    }
   }
 
   implicit class scifioSC(sc: SparkContext) extends Serializable {
@@ -175,6 +138,7 @@ object ImageIOOps extends Serializable {
   }
 
   implicit class iioSC(sc: SparkContext) extends Serializable {
+    import fourquant.utils.IOUtils.LocalPortableDataStream
     /**
      * Load the image(s) as a series of 2D tiles
      * @param path hadoop-style path to the image files (can contain wildcards)
@@ -199,14 +163,17 @@ object ImageIOOps extends Serializable {
       }.repartition(partitionCount).mapPartitions{
         inPart =>
           // reuise the open portabledatastreams to avoid reopening and copying the file
-          var streamLog = new mutable.HashMap[String,ImageInputStream]()
+          var streamLog = new mutable.HashMap[String,InputStream]()
+
           for (cTileChunk <- inPart;
                curPath = cTileChunk._1;
                suffix =  curPath.split("[.]").reverse.headOption;
-               /*curStream = streamLog.getOrElseUpdate(curPath,
-                 createStream(cTileChunk._2._1.open())); **/
-                // for now read the tile everytime
+               curInput = streamLog.getOrElseUpdate(curPath,cTileChunk._2._1.cache);
+                /** for now read the tile everytime
                 curStream = createStream(cTileChunk._2._1.open());
+                  **/
+                emptyVal = curInput.reset();
+                curStream = createStream(curInput);
                 sx = cTileChunk._2._2._1;
                 sy = cTileChunk._2._2._2;
                curTile <- readTileArray[T](curStream,suffix,sx,sy, tileWidth,tileHeight)

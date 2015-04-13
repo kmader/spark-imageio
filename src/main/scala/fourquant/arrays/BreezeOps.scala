@@ -13,6 +13,9 @@ import scala.reflect.ClassTag
  * Created by mader on 4/13/15.
  */
 object BreezeOps extends Serializable { // have the proper conversions for positions automatically
+
+  case class TileStats(mean: Double, min: Double, max: Double, count: Long, nzcount: Long)
+
   implicit class denseVectorRDD[A : ClassTag, B: Numeric](rdd: RDD[(A,DenseVector[B])]) {
 
   }
@@ -30,13 +33,34 @@ object BreezeOps extends Serializable { // have the proper conversions for posit
     }
   }
 
+  def array2DtoMatrix[B: Numeric](arr: Array[Array[B]])(
+    implicit bbt: ClassTag[Array[B]], bbbt: ClassTag[B]
+    ) = {
+    Matrices.dense(arr(0).length, arr.length,
+      arr.flatten[B].map(v => implicitly[Numeric[B]].toDouble(v)))
+  }
+  implicit class array2DRDD[A: ClassTag, B: Numeric](rdd: RDD[(A,Array[Array[B]])])(
+    implicit bt: ClassTag[Array[Array[B]]], bbt: ClassTag[Array[B]], bbbt: ClassTag[B]) extends
+      Serializable {
+
+    def toMatrixRDD() = arrayRDD2DtoMatrixRDD(rdd)
+
+    def getTileStats() = rdd.mapValues{
+      cTile =>
+        val flatVec = cTile.flatten[B].map(implicitly[Numeric[B]].toDouble(_))
+        TileStats(mean=flatVec.sum/flatVec.length,
+                  min=flatVec.min,
+                  max=flatVec.max,
+                  count=flatVec.length,
+                  nzcount=flatVec.filter(_>0).sum.toLong)
+    }
+
+
+  }
+
   implicit def arrayRDD2DtoMatrixRDD[A: ClassTag, B: Numeric](rdd: RDD[(A,Array[Array[B]])])(
             implicit bt: ClassTag[Array[Array[B]]], bbt: ClassTag[Array[B]], bbbt: ClassTag[B])
-     = rdd.mapValues {
-    arr =>
-      Matrices.dense(arr.length, arr(0).length,
-        arr.flatten[B].map(v => implicitly[Numeric[B]].toDouble(v)))
-  }
+     = rdd.mapValues(array2DtoMatrix(_))
 
   implicit class matrixThreshold(im: Matrix) extends Serializable {
 
@@ -45,7 +69,7 @@ object BreezeOps extends Serializable { // have the proper conversions for posit
         case (dblVal,idx) => f(dblVal)
       }.map{
         case (dblVal,idx) =>
-          ((Math.round(idx/im.numRows).toInt,idx % im.numRows),dblVal)
+          ((idx % im.numRows, Math.round(idx/im.numRows).toInt),dblVal)
       }
     }
   }
@@ -77,7 +101,14 @@ object BreezeOps extends Serializable { // have the proper conversions for posit
             cPt._2)
       }
     }
-    
+
   }
+
+  implicit def arrayRDD2DtoLocMatrixRDD[A: ArrayPosition, B: Numeric](
+                 rdd: RDD[(A, Array[Array[B]])])(
+    implicit at: ClassTag[A], bt: ClassTag[Array[Array[B]]], bbt: ClassTag[Array[B]],
+    bbbt: ClassTag[B])
+  = locMatrixRDD(rdd.toMatrixRDD())
+
 
 }

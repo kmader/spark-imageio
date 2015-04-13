@@ -33,6 +33,13 @@ object Positions {
     override def setPos(a: (Int,Int), b: Array[Int]): (Int, Int) = (b(0),b(1))
   }
 
+  implicit class SimplePosition[T: ArrayPosition](cp: T) extends Serializable {
+    def getPos() = implicitly[ArrayPosition[T]].getPos(cp)
+    def getX() = implicitly[ArrayPosition[T]].getX(cp)
+    def getY() = implicitly[ArrayPosition[T]].getY(cp)
+    def getZ() = implicitly[ArrayPosition[T]].getZ(cp)
+  }
+
 }
 
 trait GlobalPosition[T] extends Serializable {
