@@ -23,7 +23,7 @@ class SparkImageIOTests extends FunSuite with Matchers {
     tImg.first._2(0).length shouldBe 1000
   }
 
-  test("Spot Check  real Data from the big image as double") {
+  test("Spot Check real Data from the big image as double") {
     // just one tile
     implicit val ts = new TilingStrategy2D() {
       override def createTiles2D(fullWidth: Int, fullHeight: Int, tileWidth: Int, tileHeight:
