@@ -1,6 +1,7 @@
 package fourquant.arrays
 
 import breeze.linalg.{Matrix => _, _}
+import org.apache.spark.mllib.linalg.distributed.BlockMatrix
 import org.apache.spark.mllib.linalg.{Matrices, Matrix}
 import org.apache.spark.rdd.RDD
 
@@ -44,6 +45,7 @@ object BreezeOps extends Serializable { // have the proper conversions for posit
       Serializable {
 
     def toMatrixRDD() = arrayRDD2DtoMatrixRDD(rdd)
+
 
     def getTileStats() = rdd.mapValues{
       cTile =>
@@ -93,12 +95,27 @@ object BreezeOps extends Serializable { // have the proper conversions for posit
   implicit class locMatrixRDD[A: ArrayPosition](mrdd: RDD[(A, Matrix)])(
                                                implicit at: ClassTag[A]
     ) extends Serializable {
+    import Positions._
+
     def sparseThresh(f: (Double) => Boolean) = {
       mrdd.localSparseThresh(f).flatMap{
         case (cPos,spArray) =>
           for(cPt <- spArray) yield(
             implicitly[ArrayPosition[A]].add(cPos, Array(cPt._1._1,cPt._1._2)),
             cPt._2)
+      }
+    }
+
+    def toBlockMatrix(rowsPerBlock: Option[Int] = None, colsPerBlock: Option[Int] = None) = {
+      val bm = mrdd.map{
+        case (kpos,mat) => ((kpos.getX,kpos.getY),mat)
+      }
+      (rowsPerBlock,colsPerBlock) match {
+        case (Some(rpb),Some(cpb)) =>
+          new BlockMatrix(bm,rpb,cpb)
+        case (_,_) =>
+          val (rpb,cpb) = bm.map(kv => (kv._2.numRows,kv._2.numCols)).first
+          new BlockMatrix(bm,rpb,cpb)
       }
     }
 

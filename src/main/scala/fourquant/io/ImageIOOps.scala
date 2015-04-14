@@ -169,7 +169,7 @@ object ImageIOOps extends Serializable {
                curPath = cTileChunk._1;
                suffix =  curPath.split("[.]").reverse.headOption;
                curInput = streamLog.getOrElseUpdate(curPath,cTileChunk._2._1.cache);
-                /** for now read the tile everytime
+                /** for now read the tile every time
                 curStream = createStream(cTileChunk._2._1.open());
                   **/
                 emptyVal = curInput.reset();

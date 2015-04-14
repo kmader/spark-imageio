@@ -39,6 +39,11 @@ class ImageIOTests extends FunSuite with Matchers {
 
   }
 
+  test("Make a very simple test image") {
+    val newFile = ImageTestFunctions.makeImagePath(500,500,"tif",testDataDir)
+
+  }
+
   test("Load tile from big image multiple times") {
     val is = ImageIOOps.createStream(
       new FileInputStream(new File(bigImage))
@@ -281,18 +286,34 @@ object ImageTestFunctions extends Serializable {
     val emptyImage = new BufferedImage(xdim, ydim, BufferedImage.TYPE_BYTE_GRAY)
     val g = emptyImage.getGraphics()
     //g.drawString("Hey!",50,50)
-
     for (i <- 0 to xdim) g.drawRect(i, i, 1, 1)
-
-
     ImageIO.write(emptyImage, format, os)
     os
+  }
+
+  def makeImageDataColor(xdim: Int, ydim: Int, os: OutputStream, format: String): OutputStream = {
+    val emptyImage = new BufferedImage(xdim, ydim, BufferedImage.TYPE_BYTE_GRAY)
+    val g = emptyImage.getGraphics()
+    for (i <- 0 to xdim) g.drawRect(i, i, 1, 1)
+    g.setColor(java.awt.Color.DARK_GRAY)
+    for (i <- 0 to xdim) g.drawRect(i-2, i, 1, 1)
+    g.setColor(java.awt.Color.LIGHT_GRAY)
+    for (i <- 0 to xdim) g.drawRect(i+2, i, 1, 1)
+    ImageIO.write(emptyImage, format, os)
+    os
+  }
+
+  def makeImagePath(xdim: Int, ydim: Int, format: String, folder: String) = {
+    val outFile = new File(folder+File.separator+"test_"+xdim+"_"+ydim+"."+format)
+    makeImageDataColor(xdim, ydim, new FileOutputStream(outFile), format)
+    println(format+" file written:" + outFile.getAbsolutePath)
+    outFile.getAbsolutePath
   }
 
   def makeImage(xdim: Int, ydim: Int, format: String): String = {
     val tempFile = File.createTempFile("junk", "." + format)
     makeImageData(xdim, ydim, new FileOutputStream(tempFile), format)
-    println("PNG file written:" + tempFile.getAbsolutePath)
+    println(format+" file written:" + tempFile.getAbsolutePath)
     tempFile.getAbsolutePath
   }
 
