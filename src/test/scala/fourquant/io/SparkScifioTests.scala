@@ -1,6 +1,6 @@
 package fourquant.io
 
-import fourquant.arrays.{Positions, BreezeOps}
+import fourquant.arrays.{BreezeOps, Positions}
 import fourquant.io.IOOps._
 import fourquant.tiles.TilingStrategies
 import net.imglib2.`type`.numeric.real.FloatType
@@ -9,7 +9,7 @@ import org.apache.spark.mllib.linalg.Matrices
 import org.scalatest.{FunSuite, Matchers}
 
 class SparkScifioTests extends FunSuite with Matchers {
-  val useCloud = false
+  val useCloud = true
   val useLocal = true
   val useBigImages = false
 
@@ -20,9 +20,9 @@ class SparkScifioTests extends FunSuite with Matchers {
   val testDataDir = "/Users/mader/Dropbox/Informatics/spark-imageio/test-data/"
 
   test("Load a small image in spark") {
-    import TilingStrategies.Grid.GridTiling2D
     import BreezeOps._
     import Positions._
+    import TilingStrategies.Grid.GridTiling2D
     val regions = GridTiling2D.createTiles2D(100, 100, 20, 20)
     val imgStr = ImageTestFunctions.makeImage(100,100,"tif")
 
@@ -41,12 +41,29 @@ class SparkScifioTests extends FunSuite with Matchers {
   }
 
   if (useCloud) {
+    sc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", "AKIAJM4PPKISBYXFZGKA")
+    sc.hadoopConfiguration.set("fs.s3n.awsSecretAccessKey",
+      "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")
+    test("Small Cloud Test") {
+      import fourquant.tiles.TilingStrategies.Simple2DGrid
+      import net.imglib2.`type`.numeric.real.FloatType
+      val ts = new Simple2DGrid()
+      val regions = ts.createTiles2D(1600, 1600, 400, 400)
+      import fourquant.io.IOOps._
+      val roiImages =
+        sc.genericArrayImagesRegion2D[Array[Float],FloatType]("s3n://geo-images/test/regions_1600_1600.tif",256,regions)
+      roiImages.count shouldBe 16
+
+    }
+
+    test("Cloud plane tile test") {
+      import fourquant.io.ImageIOOps._
+      import fourquant.tiles.TilingStrategies.Grid._
+      val id = sc.scifioTileRead("s3n://geo-images/test/regions_1600_1600.tif",200,200,6)
+      id.count shouldBe 64
+      id.first._2._2.length shouldBe (200*200)
+    }
     test("Cloud Test") {
-
-      sc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", "AKIAJM4PPKISBYXFZGKA")
-      sc.hadoopConfiguration.set("fs.s3n.awsSecretAccessKey",
-        "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")
-
       val roiImages =
         sc.genericArrayImagesRegion2D[Float,FloatType](
           "s3n://geo-images/*.tif",100,Array((38000,6000,2000,2000)))

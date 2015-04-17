@@ -20,7 +20,7 @@ class ImageIOTests extends FunSuite with Matchers {
   test("Load a tile from a test image multiple times") {
     val is = ImageTestFunctions.makeVSImg(500, 500, "tif")
 
-    ImageIOOps.readTile(is, None, 0, 0, 100, 100) match {
+    ImageIOOps.readTile(is, None, 0, 0, 100, 100, None) match {
       case Some(cTile) =>
         cTile.getWidth shouldBe 100
         cTile.getHeight shouldBe 100
@@ -29,7 +29,7 @@ class ImageIOTests extends FunSuite with Matchers {
         throw new IllegalArgumentException("Cannot be empty")
     }
 
-    ImageIOOps.readTile(is, None, 0, 0, 100, 50) match {
+    ImageIOOps.readTile(is, None, 0, 0, 100, 50, None) match {
       case Some(cTile) =>
         cTile.getHeight shouldBe 50
         cTile.getWidth shouldBe 100
@@ -49,7 +49,7 @@ class ImageIOTests extends FunSuite with Matchers {
       new FileInputStream(new File(bigImage))
     )
 
-    ImageIOOps.readTile(is, None, 0, 0, 100, 100) match {
+    ImageIOOps.readTile(is, None, 0, 0, 100, 100, None) match {
       case Some(cTile) =>
         cTile.getWidth shouldBe 100
         cTile.getHeight shouldBe 100
@@ -58,7 +58,7 @@ class ImageIOTests extends FunSuite with Matchers {
         throw new IllegalArgumentException("Cannot be empty")
     }
 
-    ImageIOOps.readTile(is, None, 0, 0, 100, 50) match {
+    ImageIOOps.readTile(is, None, 0, 0, 100, 50, None) match {
       case Some(cTile) =>
         cTile.getHeight shouldBe 50
         cTile.getWidth shouldBe 100
@@ -70,7 +70,7 @@ class ImageIOTests extends FunSuite with Matchers {
 
   test("Over-read a tile") {
     val is = ImageTestFunctions.makeVSImg(50, 50, "tif")
-    ImageIOOps.readTileDouble(is, Some("tif"), 0, 0, 100, 100) match {
+    ImageIOOps.readTileDouble(is, Some("tif"), 0, 0, 100, 100, None) match {
       case Some(cTile) =>
         cTile.length shouldBe 50
         cTile(0).length shouldBe 50
@@ -82,14 +82,14 @@ class ImageIOTests extends FunSuite with Matchers {
   test("Read a tile outside of image") {
     val is = ImageTestFunctions.makeVSImg(50, 50, "png")
 
-    ImageIOOps.readTileDouble(is, Some("png"), 100, 100, 100, 100).isEmpty shouldBe true
+    ImageIOOps.readTileDouble(is, Some("png"), 100, 100, 100, 100, None).isEmpty shouldBe true
   }
 
 
   test("Load array data from tile") {
     val is = ImageTestFunctions.makeVSImg(500, 500, "tif")
 
-    ImageIOOps.readTileDouble(is, Some("tif"), 0, 0, 100, 200) match {
+    ImageIOOps.readTileDouble(is, Some("tif"), 0, 0, 100, 200, None) match {
       case Some(cTile) =>
         cTile.length shouldBe 200
         cTile(0).length shouldBe 100
@@ -105,7 +105,7 @@ class ImageIOTests extends FunSuite with Matchers {
         throw new IllegalArgumentException("Cannot be empty")
     }
 
-    ImageIOOps.readTileDouble(is, Some("tif"), 10, 5, 25, 30) match {
+    ImageIOOps.readTileDouble(is, Some("tif"), 10, 5, 25, 30, None) match {
       case Some(cTile) =>
         cTile.length shouldBe 30
         cTile(0).length shouldBe 25
@@ -139,7 +139,7 @@ class ImageIOTests extends FunSuite with Matchers {
     val tileStrat = new Simple2DGrid()
     val ttest = tileStrat.createTiles2D(35, 35, 10, 10)
     val tiles = ttest.flatMap(inPos => ImageIOOps.readTile(is, Some("tif"),
-      inPos._1, inPos._2, inPos._3, inPos._4))
+      inPos._1, inPos._2, inPos._3, inPos._4,None))
     tiles.length shouldBe 16
     all(tiles.map(_.getWidth())) shouldBe 10
     all(tiles.map(_.getHeight())) shouldBe 10
@@ -147,7 +147,7 @@ class ImageIOTests extends FunSuite with Matchers {
 
     val atest = tileStrat.createTiles2D(10, 10, 4, 3)
     val stiles = atest.flatMap(inPos => ImageIOOps.readTile(is, Some("tif"),
-      inPos._1, inPos._2, inPos._3, inPos._4))
+      inPos._1, inPos._2, inPos._3, inPos._4,None))
     stiles.length shouldBe 12
     all(stiles.map(_.getWidth())) shouldBe 4
     all(stiles.map(_.getHeight())) shouldBe 3
@@ -165,7 +165,7 @@ class ImageIOTests extends FunSuite with Matchers {
     val subpos = alltilepositions.take(10)
 
     val tiles = subpos.flatMap(inPos =>
-      ImageIOOps.readTile(is, Some("tif"), inPos._1, inPos._2, inPos._3, inPos._4))
+      ImageIOOps.readTile(is, Some("tif"), inPos._1, inPos._2, inPos._3, inPos._4,None))
     tiles.length shouldBe 10
     all(tiles.map(_.getWidth())) shouldBe 1000
     all(tiles.map(_.getHeight())) shouldBe 1000
@@ -176,12 +176,12 @@ class ImageIOTests extends FunSuite with Matchers {
     val is = ImageIOOps.createStream(
       new FileInputStream(new File(bigImage))
     )
-
-    ImageIOOps.readTileArray[Char](is, Some("tif"),36000,6000,2000,2000) match {
+    import fourquant.io.BufferedImageOps.implicits.charImageSupport
+    ImageIOOps.readTileArray[Char](is, Some("tif"),36000,6000,2000,2000,None) match {
       case Some(cTile) =>
         cTile.flatten.min shouldBe 0
         cTile.flatten.max shouldBe 13
-        cTile.flatten.map(_.toDouble).sum shouldBe 1785.0 +- 0.5
+        cTile.flatten.map(_.toDouble).sum shouldBe 144647.0 +- 0.5
         println("Non Zero Elements:"+cTile.flatten.filter(_>0).length)
       case None =>
         false shouldBe true
@@ -190,6 +190,7 @@ class ImageIOTests extends FunSuite with Matchers {
 
   test("Read image as double tiles") {
     import TilingStrategies.Grid._
+    import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
     val is = ImageTestFunctions.makeVSImg(250, 500, "tif")
     val uniTile = ImageIOOps.readImageAsTiles[Double](is, Some("tif"), 250, 500)
     uniTile.length shouldBe 1
@@ -201,7 +202,7 @@ class ImageIOTests extends FunSuite with Matchers {
     t2.length shouldBe 1
     t2.headOption match {
       case Some(cTile) =>
-       //println(cTile._1+" =>\n"+cTile._2.map(_.mkString(",")).mkString("\n"))
+        //println(cTile._1+" =>\n"+cTile._2.map(_.mkString(",")).mkString("\n"))
 
         cTile._2(0)(0) shouldBe 255.0 +- 0.5
       case None =>
@@ -216,6 +217,7 @@ class ImageIOTests extends FunSuite with Matchers {
 
   test("Read image as char tiles") {
     import TilingStrategies.Grid._
+    import fourquant.io.BufferedImageOps.implicits.charImageSupport
     val is = ImageTestFunctions.makeVSImg(30, 30, "tif")
     val imTiles = ImageIOOps.readImageAsTiles[Char](is, Some("tif"), 10, 10)
     imTiles.length shouldBe 9
@@ -238,24 +240,25 @@ class ImageIOTests extends FunSuite with Matchers {
     }
 
   }
-if (heavy) {
-  test("Read char tiles from a big image") {
-    import TilingStrategies.Grid._
-    val is = ImageIOOps.createStream(
-      new FileInputStream(new File(bigImage))
-    )
+  if (heavy) {
+    test("Read char tiles from a big image") {
+      import TilingStrategies.Grid._
+      import fourquant.io.BufferedImageOps.implicits.charImageSupport
+      val is = ImageIOOps.createStream(
+        new FileInputStream(new File(bigImage))
+      )
 
-    val imTiles = ImageIOOps.readImageAsTiles[Char](is, Some("tif"), 5000, 5000)
-    imTiles.length shouldBe 64
-    imTiles.headOption match {
-      case Some(cTile) =>
-        println(cTile._1+" => "+cTile._2.flatten.map(_.toDouble).sum)
-      case None =>
-        false shouldBe true
+      val imTiles = ImageIOOps.readImageAsTiles[Char](is, Some("tif"), 5000, 5000)
+      imTiles.length shouldBe 64
+      imTiles.headOption match {
+        case Some(cTile) =>
+          println(cTile._1+" => "+cTile._2.flatten.map(_.toDouble).sum)
+        case None =>
+          false shouldBe true
+      }
+
     }
-
   }
-}
 
   test("Test the boundary images") {
     val is = ImageIOOps.createStream(
@@ -268,7 +271,7 @@ if (heavy) {
     val subpos = alltilepositions.takeRight(3)
 
     val tiles = subpos.flatMap(inPos =>
-      ImageIOOps.readTile(is, Some("tif"), inPos._1, inPos._2, inPos._3, inPos._4))
+      ImageIOOps.readTile(is, Some("tif"), inPos._1, inPos._2, inPos._3, inPos._4, None))
 
     println(tiles.mkString("\n"))
     tiles.length shouldBe 3
@@ -301,6 +304,33 @@ object ImageTestFunctions extends Serializable {
     for (i <- 0 to xdim) g.drawRect(i+2, i, 1, 1)
     ImageIO.write(emptyImage, format, os)
     os
+  }
+
+  def makeImageDataRegions(xdim: Int, ydim: Int, os: OutputStream, format: String):
+  OutputStream = {
+    val emptyImage = new BufferedImage(xdim, ydim, BufferedImage.TYPE_BYTE_GRAY)
+    val g = emptyImage.getGraphics()
+    val bigBoxSize: Int = 35
+    val bigBoxSpace: Int = Math.min(xdim,200)
+    for (xoff <- 0 to Math.ceil(xdim * 1.0 / bigBoxSpace).toInt;
+         yoff <- 0 to Math.ceil(ydim * 1.0 / bigBoxSpace).toInt;
+         xpos = (xoff+0.5) * bigBoxSpace - bigBoxSize/2.0;
+         ypos = (yoff+0.5) * bigBoxSpace- bigBoxSize/2.0) {
+      g.fillRect(xpos.toInt + 5, ypos.toInt + 5, bigBoxSize - 5 * 2, bigBoxSize - 5 * 2)
+      g.setColor(java.awt.Color.DARK_GRAY)
+      g.fillRect(xpos.toInt + 10, ypos.toInt + 10, bigBoxSize - 10 * 2, bigBoxSize - 10 * 2)
+      g.setColor(java.awt.Color.LIGHT_GRAY)
+      g.fillRect(xpos.toInt + 15, ypos.toInt + 15, bigBoxSize - 15 * 2, bigBoxSize - 15 * 2)
+    }
+    ImageIO.write(emptyImage, format, os)
+    os
+  }
+
+  def makeImagePathRegions(xdim: Int, ydim: Int, format: String, folder: String) = {
+    val outFile = new File(folder+File.separator+"regions_"+xdim+"_"+ydim+"."+format)
+    makeImageDataRegions(xdim, ydim, new FileOutputStream(outFile), format)
+    println(format+" file written:" + outFile.getAbsolutePath)
+    outFile.getAbsolutePath
   }
 
   def makeImagePath(xdim: Int, ydim: Int, format: String, folder: String) = {

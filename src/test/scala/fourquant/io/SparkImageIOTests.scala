@@ -1,58 +1,78 @@
 package fourquant.io
 
+import fourquant.ImageSparkInstance
 import fourquant.arrays.{BreezeOps, Positions}
 import fourquant.io.ImageIOOps._
 import fourquant.io.SparkImageIOTests.GeoPoint
 import fourquant.labeling.ConnectedComponents
 import fourquant.labeling.ConnectedComponents.LabelCriteria
 import fourquant.tiles.{TilingStrategies, TilingStrategy2D}
-import org.apache.spark.{SparkConf, SparkContext}
+import fourquant.utils.SilenceLogs
 import org.scalatest.{FunSuite, Matchers}
 
-class SparkImageIOTests extends FunSuite with Matchers {
-  val useCloud = false
-  val useLocal = true
-  val bigTests = false
-  lazy val sconf = {
-    //System.setProperty("spark.executor.memory", "20g")
+class SparkImageIOTests extends FunSuite with Matchers with ImageSparkInstance with SilenceLogs {
+  override def useLocal: Boolean = false
 
-    val nconf = if(useLocal) {
-      new SparkConf().setMaster("local[4]")
-    } else {
-      new SparkConf().setMaster("spark://merlinc60:7077"). //"spark://MacBook-Air.local:7077"
-        set("spark.local.dir","/scratch/")
-    }
-    nconf.
-      set("spark.executor.memory", "20g").
-      setAppName(classOf[SparkImageIOTests].getCanonicalName)
-  }
-  lazy val sc = {
-    println(sconf.toDebugString)
-    var tsc = new SparkContext(sconf)
-    if (!useLocal) {
-      SparkContext.jarOfClass(classOf[SparkImageIOTests]) match {
-        case Some(jarFile) =>
-          println("Adding "+jarFile)
-          tsc.addJar(jarFile)
+  override def bigTests: Boolean = false
+
+  override def useCloud: Boolean = true
+  if (useLocal) {
+    test("Read a small test image locally") {
+      val imgFileName = ImageTestFunctions.makeImage(500, 500, "tif")
+      val littleTif = sc.binaryFiles(imgFileName).first()._2
+
+      val is = ImageIOOps.createStream(littleTif.open)
+      ImageIOOps.readTileDouble(is, Some("tif"), 0, 0, 100, 200, None) match {
+        case Some(cTile) =>
+          cTile.length shouldBe 200
+          cTile(0).length shouldBe 100
+          cTile(10)(10) shouldBe 255.0 +- 0.1
+          val allPix = cTile.flatten
+
+          allPix.min shouldBe 0.0 +- 0.1
+          allPix.max shouldBe 255.0 +- 0.1
+          (allPix.sum / 255) shouldBe 299.0 +- .5
+
+          println("Loaded tile is :" + cTile)
         case None =>
-          println("Jar File missing")
+          throw new IllegalArgumentException("Cannot be empty")
       }
-      tsc.addJar("/Users/mader/Dropbox/Informatics/spark-imageio/assembly/target/spio-assembly-0.1-SNAPSHOT.jar")
-      tsc.addJar("/Users/mader/Dropbox/Informatics/spark-imageio/target/spark-imageio-1.0-SNAPSHOT-tests.jar")
     }
-    tsc
   }
+  test("Read image from a portable-data-stream open") {
 
-  val testDataDir = if(useLocal) {
-    "file:/Users/mader/Dropbox/Informatics/spark-imageio/test-data/"
-  } else {
-    "/scratch/"
+    val bigTif = sc.binaryFiles(esriImage).first()._2
+    val is = ImageIOOps.createStream(bigTif.open)
+    import fourquant.io.BufferedImageOps.implicits.charImageSupport
+    ImageIOOps.readTileArray[Char](is, Some("tif"),36000,6000,2000,2000, None) match {
+      case Some(cTile) =>
+        cTile.flatten.min shouldBe 0
+        cTile.flatten.max shouldBe 13
+        cTile.flatten.map(_.toDouble).sum shouldBe 144647.0 +- 0.5
+        println("Non Zero Elements:"+cTile.flatten.filter(_>0).length)
+      case None =>
+        false shouldBe true
+    }
   }
+  test("Read image from a portable-data-stream cached") {
 
-
+    import fourquant.utils.IOUtils.LocalPortableDataStream
+    val bigTif = sc.binaryFiles(esriImage).first()._2
+    val is = ImageIOOps.createStream(bigTif.cache)
+    import fourquant.io.BufferedImageOps.implicits.charImageSupport
+    ImageIOOps.readTileArray[Char](is, Some("tif"),36000,6000,2000,2000, None) match {
+      case Some(cTile) =>
+        cTile.flatten.min shouldBe 0
+        cTile.flatten.max shouldBe 13
+        cTile.flatten.map(_.toDouble).sum shouldBe 144647.0 +- 0.5
+        println("Non Zero Elements:"+cTile.flatten.filter(_>0).length)
+      case None =>
+        false shouldBe true
+    }
+  }
   test("Load image in big tiles") {
     import TilingStrategies.Grid._
-    val tImg = sc.readTiledDoubleImage(testDataDir + "Hansen_GFC2014_lossyear_00N_000E.tif",
+    val tImg = sc.readTiledDoubleImage(esriImage,
       1000, 1000, 100)
     //tImg.count shouldBe 1600
     tImg.first._2.length shouldBe 1000
@@ -60,6 +80,7 @@ class SparkImageIOTests extends FunSuite with Matchers {
   }
 
   test("Spot Check real Data from the big image as double") {
+    import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
     // just one tile
     implicit val ts = new TilingStrategy2D() {
       override def createTiles2D(fullWidth: Int, fullHeight: Int, tileWidth: Int, tileHeight:
@@ -80,7 +101,8 @@ class SparkImageIOTests extends FunSuite with Matchers {
         false shouldBe true
     }
   }
-  test("Spot Check  real Data from the big image as char") {
+  test("Spot Check real Data from the big image as char") {
+    import fourquant.io.BufferedImageOps.implicits.charImageSupport
     // just one tile
     implicit val ts = new TilingStrategy2D() {
       override def createTiles2D(fullWidth: Int, fullHeight: Int, tileWidth: Int, tileHeight:
@@ -201,6 +223,7 @@ class SparkImageIOTests extends FunSuite with Matchers {
   if (bigTests) {
     test("load image as double") {
       import TilingStrategies.Grid._
+      import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
       val tImg = sc.readTiledImage[Double](testDataDir + "Hansen_GFC2014_lossyear_00N_000E.tif",
         2000,2000,100)
       //tImg.count shouldBe 64
@@ -215,6 +238,7 @@ class SparkImageIOTests extends FunSuite with Matchers {
 
     test("load image as char") {
       import TilingStrategies.Grid._
+      import fourquant.io.BufferedImageOps.implicits.charImageSupport
       val tImg = sc.readTiledImage[Char](testDataDir + "Hansen_GFC2014_lossyear_00N_000E.tif",
         2000,2000,100)
       //tImg.count shouldBe 64
@@ -311,6 +335,7 @@ class SparkImageIOTests extends FunSuite with Matchers {
       nzCount shouldBe 235439
     }
   }
+
 
 }
 object SparkImageIOTests extends Serializable {

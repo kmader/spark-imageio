@@ -1,60 +1,26 @@
 package fourquant.labeling
 
-import fourquant.arrays.{BreezeOps, Positions}
-import fourquant.io.ImageIOOps._
-import fourquant.io.ImageTestFunctions
+import fourquant.ImageSparkInstance
+import fourquant.arrays.Positions
 import fourquant.labeling.ConnectedComponents.LabelCriteria
-import fourquant.tiles.TilingStrategies
-import org.apache.spark.{SparkConf, SparkContext}
+import fourquant.utils.SilenceLogs
+import org.apache.spark.rdd.RDD
 import org.scalatest.{FunSuite, Matchers}
 
 /**
  * Created by mader on 4/14/15.
  */
-class LabelTests extends FunSuite with Matchers {
-  val useLocal = true
-  val bigTests = false
-  lazy val sconf = {
-    //System.setProperty("spark.executor.memory", "20g")
+class LabelTests extends FunSuite with Matchers with SilenceLogs with ImageSparkInstance {
+  def useLocal = true
+  def bigTests = false
+  def useCloud: Boolean = false
 
-    val nconf = if(useLocal) {
-      new SparkConf().setMaster("local[4]")
-    } else {
-      new SparkConf().setMaster("spark://merlinc60:7077"). //"spark://MacBook-Air.local:7077"
-        set("spark.local.dir","/scratch/")
-    }
-    nconf.
-      set("spark.executor.memory", "20g").
-      setAppName(classOf[LabelTests].getCanonicalName)
-  }
-  lazy val sc = {
-    println(sconf.toDebugString)
-    var tsc = new SparkContext(sconf)
-    if (!useLocal) {
-      SparkContext.jarOfClass(classOf[LabelTests]) match {
-        case Some(jarFile) =>
-          println("Adding "+jarFile)
-          tsc.addJar(jarFile)
-        case None =>
-          println("Jar File missing")
-      }
-      tsc.addJar("/Users/mader/Dropbox/Informatics/spark-imageio/assembly/target/spio-assembly-0.1-SNAPSHOT.jar")
-      tsc.addJar("/Users/mader/Dropbox/Informatics/spark-imageio/target/spark-imageio-1.0-SNAPSHOT-tests.jar")
-    }
-    tsc
-  }
-
-  val testDataDir = if(useLocal) {
-    "file:/Users/mader/Dropbox/Informatics/spark-imageio/test-data/"
-  } else {
-    "/scratch/"
-  }
 
   test("Spread Point Test") {
     import Positions._
     val (ptpos,ptval) = (("hello",5,10),"myname")
 
-    val onespread = ConnectedComponents.spreadPoints(ptpos,ptval,(1,1))
+    val onespread = ConnectedComponents.spreadPoints(ptpos,ptval,(1,1),true)
     onespread.length shouldBe 9
 
     val (orig,other) = onespread.partition(_._3)
@@ -67,11 +33,11 @@ class LabelTests extends FunSuite with Matchers {
     onespread.map(_._1.getY).max shouldBe 11
 
 
-    val twothreespread = ConnectedComponents.spreadPoints(ptpos,ptval,(2,3))
-    twothreespread.length shouldBe (5*7)
-    twothreespread.map(_._1.getX).min shouldBe 3
+    val twothreespread = ConnectedComponents.spreadPoints(ptpos,ptval,(2,3),false)
+    twothreespread.length shouldBe (3*4)
+    twothreespread.map(_._1.getX).min shouldBe 5
     twothreespread.map(_._1.getX).max shouldBe 7
-    twothreespread.map(_._1.getY).min shouldBe 7
+    twothreespread.map(_._1.getY).min shouldBe 10
     twothreespread.map(_._1.getY).max shouldBe 13
   }
 
@@ -137,80 +103,140 @@ class LabelTests extends FunSuite with Matchers {
 
   }
 
-  test("Tiny CL Test") {
-    import Positions._
-
-    val ptList = Seq(
-      (("hello",5,10),0.0),
-      (("hello",5,11),1.0),
-      (("hello",5,12),2.0)
-    )
-    val ptRdd = sc.parallelize(ptList)
-
-    implicit val doubleLabelCrit = new LabelCriteria[Double] {
-      override def matches(a: Double, b: Double): Boolean = true//Math.abs(a-b)<0.75
+  import Positions._
+  {
+    implicit val dlc = new LabelCriteria[Double] {
+      override def matches(a: Double, b: Double): Boolean = true //Math.abs(a-b)<0.75
     }
+    val lcritName = "Match-All"
+    for((cclName,cclFunc) <- Seq(
+      ("Point-based",
+        (x: RDD[((String,Int,Int),Double)], wind: (Int,Int)) =>
+          ConnectedComponents.Labeling2D(x,wind)),
+      ("Chunk-based",
+        (x: RDD[((String,Int,Int),Double)], wind: (Int,Int)) =>
+          ConnectedComponents.Labeling2DChunk(x,wind))
+    )) {
+      test("TCL Test:" + cclName+"-"+lcritName) {
 
-    val compImg = ConnectedComponents.Labeling2D(ptRdd,(1,1))
-    val comps = compImg.map(_._2._1).countByValue()
+        val ptList = Seq(
+          (("hello", 5, 10), 0.0),
+          (("hello", 5, 11), 1.0),
+          (("hello", 5, 12), 2.0)
+        )
+        val ptRdd = sc.parallelize(ptList)
 
-    println(compImg.collect.mkString("\n"))
-    comps.size shouldBe 1
+        val compImg = cclFunc(ptRdd, (1, 1))
+        val comps = compImg.map(_._2._1).countByValue()
+
+        println(compImg.collect.mkString("\n"))
+        comps.size shouldBe 1
+      }
+    }
   }
-  test("Tiny CL Test 3,3") {
-    import Positions._
-
-    val ptList = Seq(
-      (("hello",5,10),0.0),
-      (("hello",5,11),1.0),
-      (("hello",5,12),2.0)
-    )
-    val ptRdd = sc.parallelize(ptList)
-
-    implicit val newLabelCrit = new LabelCriteria[Double] {
+  {
+    implicit val dlc = new LabelCriteria[Double] {
       override def matches(a: Double, b: Double): Boolean = Math.abs(a-b)<0.75
     }
+    val lcritName = "Match-OnePt"
+    for((cclName,cclFunc) <- Seq(
+      ("Point-based",
+        (x: RDD[((String,Int,Int),Double)], wind: (Int,Int)) =>
+          ConnectedComponents.Labeling2D(x,wind)),
+      ("Chunk-based",
+        (x: RDD[((String,Int,Int),Double)], wind: (Int,Int)) =>
+          ConnectedComponents.Labeling2DChunk(x,wind))
+    )) {
+      test("TCL Test:" + cclName+"-"+lcritName) {
 
-    val comps3 = ConnectedComponents.Labeling2D(ptRdd,(1,1)).map(_._2._1).countByValue()
-    comps3.size shouldBe 3
+        val ptList = Seq(
+          (("hello", 5, 10), 0.0),
+          (("hello", 5, 11), 1.0),
+          (("hello", 5, 12), 2.0)
+        )
+        val ptRdd = sc.parallelize(ptList)
 
+        val compImg = cclFunc(ptRdd, (1, 1))
+        val comps = compImg.map(_._2._1).countByValue()
+
+        println(compImg.collect.mkString("\n"))
+        comps.size shouldBe 3
+      }
+    }
   }
 
   test("Quick Component Labeling") {
-    import TilingStrategies.Grid._
-
-    val imgPath = ImageTestFunctions.makeImagePath(50,50,"tif",
-      "/Users/mader/Dropbox/Informatics/spark-imageio/test-data/")
-
-    val tiledImage = sc.readTiledDoubleImage(imgPath, 10, 25, 80).cache
-
-    val fTile = tiledImage.first
-
-    fTile._2(0).length shouldBe 10
-    fTile._2.length shouldBe 25
-
-    val lengthImage = tiledImage.mapValues(_.length)
-
-    import BreezeOps._
-    import Positions._
-
-    val nonZeroEntries = tiledImage.sparseThresh(_>0).cache
-
-    implicit val doubleLabelCrit = new LabelCriteria[Double] {
-      override def matches(a: Double, b: Double): Boolean = true//Math.abs(a-b)<0.75
-    }
-    val compLabel = ConnectedComponents.Labeling2D(nonZeroEntries,(3,3))
-
-    val components = compLabel.map(_._2._1).countByValue()
-
+    import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
+    val nonZeroEntries = makeSimpleTiledImage()._2
     val nzCount = nonZeroEntries.count()
 
+    { // unique namespace for implicit variables
+    implicit val doubleLabelCrit = new LabelCriteria[Double] {
+        override def matches(a: Double, b: Double): Boolean = true //match everything
+      }
+      val compLabel = ConnectedComponents.Labeling2D(nonZeroEntries, (1, 1))
+      val components = compLabel.map(_._2._1).countByValue()
 
-    println(("Non-Zero Count",nzCount,"Components",components.size))
+      println(("Non-Zero Count", nzCount, "Components", components.size))
+      print("Components:" + components.mkString(", "))
 
-    print("Components:"+components.mkString(", "))
+      components.size shouldBe 1
+      nzCount shouldBe 338
+    }
 
-    nzCount shouldBe 2088
+    {
+      implicit val doubleLabelCrit = new LabelCriteria[Double] {
+        override def matches(a: Double, b: Double): Boolean = Math.abs(a-b)<0.75 // match only
+        // points with the same value
+      }
+      val compLabel = ConnectedComponents.Labeling2D(nonZeroEntries, (1, 1))
+      val components = compLabel.map(_._2._1).countByValue()
+
+      println(("Non-Zero Count", nzCount, "Components", components.size))
+      print("Components:" + components.mkString(", "))
+
+      components.size shouldBe 3
+      nzCount shouldBe 338
+    }
   }
+  for(opt<-Seq(true,false);fullRange<-Seq(true,false)) {
+    test("Chunk CL" + (if(opt) " Optimized" else "")+ (if(fullRange) "-Full" else "-Half")) {
+      import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
+      val nonZeroEntries = makeSimpleTiledImage()._2
+      val nzCount = nonZeroEntries.count()
+
+      { // unique namespace for implicit variables
+      implicit val doubleLabelCrit = new LabelCriteria[Double] {
+          override def matches(a: Double, b: Double): Boolean = true //match everything
+        }
+        val compLabel = ConnectedComponents.Labeling2DChunk(nonZeroEntries, (1, 1),
+          fullRange=fullRange,optimizeList=true)
+        val components = compLabel.map(_._2._1).countByValue()
+
+        println(("Non-Zero Count", nzCount, "Components", components.size))
+        print("Components:" + components.mkString(", "))
+
+        components.size shouldBe 1
+        nzCount shouldBe 338
+      }
+
+      {
+        implicit val doubleLabelCrit = new LabelCriteria[Double] {
+          override def matches(a: Double, b: Double): Boolean = Math.abs(a-b)<0.75 // match only
+          // points with the same value
+        }
+        val compLabel = ConnectedComponents.Labeling2DChunk(nonZeroEntries, (1, 1))
+        val components = compLabel.map(_._2._1).countByValue()
+
+        println(("Non-Zero Count", nzCount, "Components", components.size))
+        println("Components:" + components.mkString(", "))
+
+        components.size shouldBe 3
+        nzCount shouldBe 338
+      }
+    }
+
+  }
+
 
 }

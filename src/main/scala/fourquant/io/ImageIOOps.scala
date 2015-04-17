@@ -3,12 +3,14 @@ package fourquant.io
 import java.awt.Rectangle
 import java.awt.image.BufferedImage
 import java.io._
-import javax.imageio.ImageIO
-import javax.imageio.spi.IIORegistry
+import java.util.concurrent.atomic.AtomicInteger
 import javax.imageio.stream.ImageInputStream
+import javax.imageio.{ImageIO, ImageReader}
 
+import com.sun.media.imageioimpl.plugins.tiff.TIFFImageReaderSpi
 import fourquant.io.BufferedImageOps._
 import fourquant.tiles.TilingStrategy2D
+import io.scif.filters.ReaderFilter
 import org.apache.spark.SparkContext
 import org.apache.spark.input.PortableDataStream
 
@@ -20,33 +22,101 @@ import scala.collection.mutable
  * Created by mader on 2/27/15.
  */
 object ImageIOOps extends Serializable {
-  val verbose = false
-  import org.geotoolkit.image.io.plugin.RawTiffImageReader
-  { // append the tiff file reading
-    val registry = IIORegistry.getDefaultInstance()
-    registry.registerServiceProvider(new RawTiffImageReader.Spi())
+  val verbose = true
+  val loadTiffies=false
+  /**
+   * object to limit access to imageio
+   */
+  val imIOAccess = new AtomicInteger(0)
+
+  if (loadTiffies)
+  { // append the tiff file reading not needed anymore
+    //val registry = IIORegistry.getDefaultInstance()
+    //registry.registerServiceProvider(new RawTiffImageReader.Spi())
   }
   case class ImageInfo(count: Int, height: Int, width: Int, info: String)
 
   def createStream(input: InputStream) = ImageIO.createImageInputStream(input)
 
-  def getReader(stream: ImageInputStream,suffix: Option[String] = None) = {
+  private def getAllReaders(stream: ImageInputStream,suffix: Option[String] = None) = {
+    ImageIO.scanForPlugins()
+
+    val sufReader = (for(sf<-suffix.toList;
+                         foundReader <- ImageIO.getImageReadersBySuffix(sf).toList)
+      yield foundReader)
+    val streamReader = ImageIO.getImageReaders(stream).toList
+    (sufReader,streamReader)
+  }
+
+  def getReaderList(stream: ImageInputStream,suffix: Option[String] = None) = {
+    val (a,b) = getAllReaders(stream,suffix)
+    a ++ b
+  }
+
+  def getTifReader(stream: ImageInputStream): Option[ImageReader] = {
+    val reader = new TIFFImageReaderSpi().createReaderInstance()
+    try {
+      reader.setInput(stream)
+      Some(reader)
+    } catch {
+      case e: Throwable =>
+        val stmMsg = "Reader is: "+reader+
+          "and stream Input was:"+stream+" and had class:"+stream.getClass()+
+          " and was IIS "+ stream.isInstanceOf[ImageInputStream]
+        val outMsg = "Stream cannot be read :"+stmMsg+", "+e.getMessage
+        System.err.println(outMsg)
+        None
+    }
+  }
+
+
+  def getReader(stream: ImageInputStream, suffix: Option[String] = None,
+                tempDir: Option[String] = None) = {
     // reset the stream to beginning (if possible)
     stream.seek(0)
-    val sufReader = (for(sf<-suffix.toList;
-                        foundReader <- ImageIO.getImageReadersBySuffix(sf).toList)
-                              yield foundReader)
-    val streamReader = ImageIO.getImageReaders(stream).toList
-    if (verbose) println("\tTotal Readers found:"+sufReader.length+", "+streamReader.length)
-    val bestReader = (sufReader.headOption,streamReader.headOption) match {
-      case (Some(reader),_) => Some(reader) // prefer the suffix based reader
-      case (None,Some(reader)) => Some(reader)
-      case (None,None) => None
+    // set the cache if needed
+    val tempOrIoDir = (tempDir,System.getProperty("java.io.tmpdir")) match {
+        case(Some(prefDir),_) => Some(prefDir)
+        case (_,tmpDir)=> Some(tmpDir)
+        case _ => None
     }
-    bestReader.map(reader => {
-      reader.setInput(stream)
-      reader
-    })
+    tempOrIoDir match {
+      case Some(validDirName) if validDirName.length()>0  =>
+        ImageIO.setCacheDirectory(new File(validDirName))
+    }
+
+    suffix match {
+        // hard-code some cases since this can be very time consuming and has concurrency issues
+      case Some(tifEnding) if tifEnding.toUpperCase().contains("TIF") =>
+        getTifReader(stream)
+      case _ =>
+
+        val (sufReader, streamReader) = imIOAccess.synchronized {
+          getAllReaders (stream, suffix)
+        }
+
+        if (verbose) println ("\tTotal Readers found:" + sufReader.length + ", " + streamReader.length)
+        val bestReader = (sufReader.headOption, streamReader.headOption) match {
+          case (Some (reader), _) => Some (reader) // prefer the suffix based reader
+          case (None, Some (reader) ) => Some (reader)
+          case (None, None) => None
+        }
+        bestReader.map (reader => {
+          try {
+            reader.setInput (stream)
+          } catch {
+            case e: Throwable =>
+              val stmMsg = "Reader is: " + reader +
+                "and stream Input was:" + stream + " and had class:" + stream.getClass () +
+                " and was IIS " + stream.isInstanceOf[ImageInputStream]
+              println (stmMsg)
+
+              throw new RuntimeException ("Stream cannot be read :" + stmMsg + ", " + e.getMessage)
+          }
+
+          reader
+        })
+    }
   }
 
 
@@ -56,18 +126,20 @@ object ImageIOOps extends Serializable {
         ImageInfo(reader.getNumImages(true),reader.getHeight(0),reader.getWidth(0),
           reader.getFormatName)
       case None =>
+        System.err.println("Empty Image Info, could not be read:"+stream)
         ImageInfo(0,-1,-1,"")
     }
   }
 
-  def readTile(infile: File, x: Int, y: Int, w: Int, h: Int): Option[BufferedImage] =
+  def readTile(infile: File, x: Int, y: Int, w: Int, h: Int, tempDir: Option[String]):
+  Option[BufferedImage] =
     readTile(createStream(new FileInputStream(infile)),
       infile.getName().split("[.]").reverse.headOption,
-      x,y,w,h)
+      x,y,w,h,tempDir)
 
   private[io] def readTile(stream: ImageInputStream, suffix: Option[String],
-                           x: Int, y: Int, w: Int, h: Int):
-   Option[BufferedImage] = {
+                           x: Int, y: Int, w: Int, h: Int, tempDir: Option[String]):
+  Option[BufferedImage] = {
     val sourceRegion = new Rectangle(x, y, w, h) // The region you want to extract
 
     getReader(stream,suffix) match {
@@ -77,8 +149,9 @@ object ImageIOOps extends Serializable {
         try {
           Some(reader.read(0, param))
         } catch {
-          case  _ : Throwable =>
-            System.err.println("Image cannot be loaded, or likely is out of bounds, returning none")
+          case  e : Throwable =>
+            e.printStackTrace()
+            println("Image cannot be loaded, or likely is out of bounds, returning none")
             None
         }
       case None => None
@@ -86,25 +159,28 @@ object ImageIOOps extends Serializable {
   }
 
   def readTileArray[T: ArrayImageMapping](stream: ImageInputStream,suffix: Option[String],
-    x: Int, y: Int, w: Int, h: Int): Option[Array[Array[T]]] = {
-    readTile(stream,suffix,x,y,w,h).map(_.as2DArray[T])
+                                          x: Int, y: Int, w: Int, h: Int,
+                                           tempDir: Option[String]):
+  Option[Array[Array[T]]] = {
+    readTile(stream,suffix,x,y,w,h,tempDir).map(_.as2DArray[T])
   }
 
   private[io] def readTileDouble(stream: ImageInputStream,suffix: Option[String],
-                                                      x: Int, y: Int, w: Int, h: Int):
+                                 x: Int, y: Int, w: Int, h: Int, tempDir: Option[String]):
   Option[Array[Array[Double]]] = {
-    readTile(stream,suffix,x,y,w,h).map(_.as2DArray[Double])
+    import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
+    readTile(stream,suffix,x,y,w,h,tempDir).map(_.as2DArray[Double])
   }
 
 
 
   def readImageAsTiles[T: ArrayImageMapping](stream: ImageInputStream,suffix: Option[String],
-                                              tileWidth: Int, tileHeight: Int)(
-    implicit ts: TilingStrategy2D) = {
+                                             tileWidth: Int, tileHeight: Int)(
+                                              implicit ts: TilingStrategy2D) = {
     val info = getImageInfo(stream)
     ts.createTiles2D(info.width,info.height,tileWidth,tileHeight).flatMap {
       case (x, y, width, height) =>
-        for(cTile<-readTileArray[T](stream,suffix,x,y,width,height))
+        for(cTile<-readTileArray[T](stream,suffix,x,y,width,height,None))
           yield ((x,y),cTile)
     }
   }
@@ -113,17 +189,23 @@ object ImageIOOps extends Serializable {
   /**
    * Keep all the scifio related tools together
    */
-  object Scifio extends Serializable{
-    def readImageAsTiles(path: String, tileWidth: Int, tileHeight: Int)(
-      implicit ts: TilingStrategy2D) = {
+  object ScifioUtilFun extends Serializable{
+    def calculateTiles(path: String, tileWidth: Int, tileHeight: Int )(
+      implicit ts: TilingStrategy2D
+      ) = {
       val (creader,meta) = ScifioOps.readPath(path)
       val imgMeta = meta.get(0)
       val axLen = imgMeta.getAxesLengths()
       val width = axLen(0).toInt
       val height = axLen(1).toInt
-      ts.createTiles2D(width,height,tileWidth,tileHeight).map {
+      ts.createTiles2D(width,height,tileWidth,tileHeight)
+    }
+    def readImageAsTiles(path: String, tileWidth: Int, tileHeight: Int)(
+      implicit ts: TilingStrategy2D) = {
+      val (creader,meta) = ScifioOps.readPath(path)
+      calculateTiles(path,tileWidth,tileHeight).map {
         case (x, y, width, height) =>
-           ((x,y),creader.openPlane(0,0,Array[Long](x,y),Array[Long](width,height)))
+          ((x,y),creader.openPlane(0,0,Array[Long](x,y),Array[Long](width,height)))
       }
     }
   }
@@ -134,10 +216,35 @@ object ImageIOOps extends Serializable {
   }
 
   implicit class scifioSC(sc: SparkContext) extends Serializable {
+    import fourquant.utils.IOUtils.LocalPortableDataStream
+    def scifioTileRead(path: String, tileWidth: Int, tileHeight: Int, partCount: Int = 100)(
+      implicit ts: TilingStrategy2D) = {
+      sc.binaryFiles(path).flatMapValues{
+        inPDS =>
+          val cPath = inPDS.makeLocal(inPDS.getPath().split("[.]").reverse.head)
+          for(cTile<-ScifioUtilFun.calculateTiles(cPath,tileWidth,tileHeight)) yield (inPDS,cTile)
+      }.repartition(partCount).mapPartitions {
+        cPart =>
+          // in case there are multiple paths in the given path
+          val localPaths = collection.mutable.Map[String,String]()
+          val readers = collection.mutable.Map[String,ReaderFilter]()
+          for ((cKey, (inPDS, (x, y, width, height)))<-cPart;
+               remotePath = inPDS.getPath;
+               cPath = localPaths.getOrElseUpdate(remotePath,
+                 inPDS.makeLocal(remotePath.split("[.]").reverse.head));
+               creader = readers.getOrElseUpdate(remotePath,ScifioOps.readPath(cPath)._1);
+               curPlane = creader.openPlane(0, 0, Array[Long](x, y), Array[Long](width, height))
+          )
+            yield ((cKey, x, y), (curPlane.getLengths, curPlane.getBytes))
+
+      }
+
+    }
 
   }
 
   implicit class iioSC(sc: SparkContext) extends Serializable {
+    import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
     import fourquant.utils.IOUtils.LocalPortableDataStream
     /**
      * Load the image(s) as a series of 2D tiles
@@ -150,8 +257,9 @@ object ImageIOOps extends Serializable {
      *         as a 2D array typed T
      */
     def readTiledImage[T : ArrayImageMapping](path: String, tileWidth: Int, tileHeight: Int,
-                                             partitionCount: Int
+                                              partitionCount: Int
                                                )(implicit ts: TilingStrategy2D) = {
+      val tempDir = sc.getConf.getOption("spark.local.dir")
       sc.binaryFiles(path).mapValues{
         case pds: PortableDataStream =>
           val imInfo = getImageInfo(createStream(pds.open()))
@@ -169,21 +277,21 @@ object ImageIOOps extends Serializable {
                curPath = cTileChunk._1;
                suffix =  curPath.split("[.]").reverse.headOption;
                curInput = streamLog.getOrElseUpdate(curPath,cTileChunk._2._1.cache);
-                /** for now read the tile every time
+               /** for now read the tile every time
                 curStream = createStream(cTileChunk._2._1.open());
-                  **/
-                emptyVal = curInput.reset();
-                curStream = createStream(curInput);
-                sx = cTileChunk._2._2._1;
-                sy = cTileChunk._2._2._2;
-               curTile <- readTileArray[T](curStream,suffix,sx,sy, tileWidth,tileHeight)
+                 **/
+               emptyVal = curInput.reset();
+               curStream = createStream(curInput);
+               sx = cTileChunk._2._2._1;
+               sy = cTileChunk._2._2._2;
+               curTile <- readTileArray[T](curStream,suffix,sx,sy, tileWidth,tileHeight,tempDir)
           )
             yield ((curPath,sx,sy),curTile)
       }
     }
 
     def readTiledDoubleImage(path: String, tileWidth: Int, tileHeight: Int,
-                              partitionCount: Int)(implicit ts: TilingStrategy2D) =
+                             partitionCount: Int)(implicit ts: TilingStrategy2D) =
       readTiledImage[Double](path,tileWidth,tileHeight,partitionCount)
   }
 
