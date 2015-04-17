@@ -14,6 +14,7 @@ class ImageIOTests extends FunSuite with Matchers {
 
   val testDataDir = "/Users/mader/Dropbox/Informatics/spark-imageio/test-data/"
   val bigImage = testDataDir + "Hansen_GFC2014_lossyear_00N_000E.tif"
+  val tiledGeoImage = testDataDir + "LC81390452014295LGN00_B1.TIF"
   val verbose = false
   val heavy = false
 
@@ -124,7 +125,7 @@ class ImageIOTests extends FunSuite with Matchers {
       new FileInputStream(new File(bigImage))
     )
 
-    val iif = ImageIOOps.getImageInfo(is)
+    val iif = ImageIOOps.getImageInfo(is,None)
     println(iif)
     iif.height shouldBe 40000
     iif.width shouldBe 40000
@@ -157,7 +158,7 @@ class ImageIOTests extends FunSuite with Matchers {
     val is = ImageIOOps.createStream(
       new FileInputStream(new File(bigImage))
     )
-    val info = ImageIOOps.getImageInfo(is)
+    val info = ImageIOOps.getImageInfo(is,None)
     val tileStrat = new Simple2DGrid()
     val alltilepositions = tileStrat.createTiles2D(info.width, info.height, 1000, 1000)
     println(alltilepositions.mkString("\n"))
@@ -240,6 +241,22 @@ class ImageIOTests extends FunSuite with Matchers {
     }
 
   }
+
+  test("Read geo-tiled images") {
+    val is = ImageIOOps.createStream(
+      new FileInputStream(new File(tiledGeoImage))
+    )
+    import fourquant.io.BufferedImageOps.implicits.charImageSupport
+    ImageIOOps.readTileArray[Char](is, Some("tif"),2000,2000,100,100,None) match {
+      case Some(cTile) =>
+        cTile.flatten.min shouldBe 0
+        cTile.flatten.max shouldBe 13
+        cTile.flatten.map(_.toDouble).sum shouldBe 144647.0 +- 0.5
+        println("Non Zero Elements:"+cTile.flatten.filter(_>0).length)
+      case None =>
+        false shouldBe true
+    }
+  }
   if (heavy) {
     test("Read char tiles from a big image") {
       import TilingStrategies.Grid._
@@ -264,7 +281,7 @@ class ImageIOTests extends FunSuite with Matchers {
     val is = ImageIOOps.createStream(
       new FileInputStream(new File(bigImage))
     )
-    val info = ImageIOOps.getImageInfo(is)
+    val info = ImageIOOps.getImageInfo(is,None)
     val tileStrat = new Simple2DGrid()
     val alltilepositions = tileStrat.createTiles2D(info.width, info.height, 333, 333)
     alltilepositions.length shouldBe 14641

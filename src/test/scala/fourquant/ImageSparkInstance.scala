@@ -53,7 +53,7 @@ trait ImageSparkInstance {
           println("Adding "+jarFile)
           tsc.addJar(jarFile)
         case None =>
-          println("Jar File missing")
+          println(this.getClass()+" jar file missing")
       }
       tsc.addJar("/Users/mader/Dropbox/Informatics/spark-imageio/assembly/target/spio-assembly-0.1-SNAPSHOT.jar")
       tsc.addJar("/Users/mader/Dropbox/Informatics/spark-imageio/target/spark-imageio-1.0-SNAPSHOT-tests.jar")

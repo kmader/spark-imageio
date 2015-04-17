@@ -119,9 +119,27 @@ object ImageIOOps extends Serializable {
     }
   }
 
+  //TODO implement this class and replace the tempDir option with a real class so it can be made
+  // more complicated in the future
+  case class ImageIOSetup(tempDir: Option[String]) {
+    def setupPartition() = {
+      ImageIO.scanForPlugins()
+      val tempOrIoDir = (tempDir,System.getProperty("java.io.tmpdir")) match {
+        case(Some(prefDir),_) => Some(prefDir)
+        case (_,tmpDir)=> Some(tmpDir)
+        case _ => None
+      }
+      tempOrIoDir match {
+        case Some(validDirName) if validDirName.length()>0  =>
+          ImageIO.setCacheDirectory(new File(validDirName))
+      }
 
-  def getImageInfo(stream: ImageInputStream) = {
-    getReader(stream) match {
+    }
+  }
+
+  def getImageInfo(stream: ImageInputStream, suffix: Option[String], tempDir: Option[String] = None)
+  = {
+    getReader(stream,suffix,tempDir) match {
       case Some(reader) =>
         ImageInfo(reader.getNumImages(true),reader.getHeight(0),reader.getWidth(0),
           reader.getFormatName)
@@ -177,7 +195,8 @@ object ImageIOOps extends Serializable {
   def readImageAsTiles[T: ArrayImageMapping](stream: ImageInputStream,suffix: Option[String],
                                              tileWidth: Int, tileHeight: Int)(
                                               implicit ts: TilingStrategy2D) = {
-    val info = getImageInfo(stream)
+
+    val info = getImageInfo(stream,suffix)
     ts.createTiles2D(info.width,info.height,tileWidth,tileHeight).flatMap {
       case (x, y, width, height) =>
         for(cTile<-readTileArray[T](stream,suffix,x,y,width,height,None))
@@ -262,10 +281,11 @@ object ImageIOOps extends Serializable {
       val tempDir = sc.getConf.getOption("spark.local.dir")
       sc.binaryFiles(path).mapValues{
         case pds: PortableDataStream =>
-          val imInfo = getImageInfo(createStream(pds.open()))
-          (pds,imInfo)
+          val cachedPDS = pds.cache()
+          val imInfo = getImageInfo(createStream(cachedPDS.getUseful()),pds.getSuffix(),tempDir)
+          (cachedPDS,imInfo)
       }.flatMapValues{
-        case (pds: PortableDataStream, info: ImageInfo) =>
+        case (pds, info) =>
           for(cTile <- ts.createTiles2D(info.width,info.height,tileWidth,tileHeight))
             yield (pds,cTile)
       }.repartition(partitionCount).mapPartitions{
@@ -276,7 +296,7 @@ object ImageIOOps extends Serializable {
           for (cTileChunk <- inPart;
                curPath = cTileChunk._1;
                suffix =  curPath.split("[.]").reverse.headOption;
-               curInput = streamLog.getOrElseUpdate(curPath,cTileChunk._2._1.cache);
+               curInput = streamLog.getOrElseUpdate(curPath,cTileChunk._2._1.getUseful());
                /** for now read the tile every time
                 curStream = createStream(cTileChunk._2._1.open());
                  **/

@@ -19,12 +19,23 @@ import scala.reflect.ClassTag
  */
 object Previews extends Serializable {
     object implicits extends Serializable {
-      implicit class previewImage[A: ArrayPosition,
+      implicit class previewTiles[A: ArrayPosition,
+      @specialized(Double, Char, Boolean) B : ArrayImageMapping](
+                                                                  rdd: RDD[(A,Array[Array[B]])])(
+                                                                  implicit ct: ClassTag[A],
+                                                                  btt: ClassTag[Array[Array[B]]]
+                                                                  ) extends Serializable {
+        def tilePreview(scale: Double) = {
+          val sp = rdd.simplePreview(scale)
+
+        }
+      }
+      implicit class previewImage[A,
       @specialized(Double, Char, Boolean) B : ArrayImageMapping](
                                                        rdd: RDD[(A,Array[Array[B]])])(
                                                                 implicit ct: ClassTag[A],
       btt: ClassTag[Array[Array[B]]]
-        )  {
+        ) extends Serializable {
         def simplePreview(scale: Double) = {
           rdd.mapValues{
             cArr =>

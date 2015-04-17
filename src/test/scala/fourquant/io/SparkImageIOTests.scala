@@ -57,8 +57,8 @@ class SparkImageIOTests extends FunSuite with Matchers with ImageSparkInstance w
   test("Read image from a portable-data-stream cached") {
 
     import fourquant.utils.IOUtils.LocalPortableDataStream
-    val bigTif = sc.binaryFiles(esriImage).first()._2
-    val is = ImageIOOps.createStream(bigTif.cache)
+    val bigTif = sc.binaryFiles(esriImage).mapValues(_.cache).first()._2
+    val is = ImageIOOps.createStream(bigTif.getUseful())
     import fourquant.io.BufferedImageOps.implicits.charImageSupport
     ImageIOOps.readTileArray[Char](is, Some("tif"),36000,6000,2000,2000, None) match {
       case Some(cTile) =>
@@ -70,6 +70,7 @@ class SparkImageIOTests extends FunSuite with Matchers with ImageSparkInstance w
         false shouldBe true
     }
   }
+
   test("Load image in big tiles") {
     import TilingStrategies.Grid._
     val tImg = sc.readTiledDoubleImage(esriImage,
@@ -125,8 +126,21 @@ class SparkImageIOTests extends FunSuite with Matchers with ImageSparkInstance w
   }
 
 
+  test("Test Previews") {
+    import TilingStrategies.Grid._
+    import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
+    val imgPath = ImageTestFunctions.makeImagePath(50,50,"tif",
+      "/Users/mader/Dropbox/Informatics/spark-imageio/test-data/")
 
-  test("Quick Component Lablineg") {
+    val tiledImage = sc.readTiledImage[Double](imgPath, 10, 25, 80).cache
+    import fourquant.tiles.Previews.implicits.previewImage
+
+    val myImg = tiledImage.simplePreview(0.25)
+    val bString = myImg.first
+    println(bString)
+    bString._2.length should be > 10
+  }
+  test("Quick Component Labeling") {
     import TilingStrategies.Grid._
 
     val imgPath = ImageTestFunctions.makeImagePath(50,50,"tif",
