@@ -11,7 +11,7 @@ import fourquant.utils.SilenceLogs
 import org.scalatest.{FunSuite, Matchers}
 
 class SparkImageIOTests extends FunSuite with Matchers with ImageSparkInstance with SilenceLogs {
-  override def useLocal: Boolean = false
+  override def useLocal: Boolean = true
 
   override def bigTests: Boolean = false
 
@@ -135,11 +135,26 @@ class SparkImageIOTests extends FunSuite with Matchers with ImageSparkInstance w
     val tiledImage = sc.readTiledImage[Double](imgPath, 10, 25, 80).cache
     import fourquant.tiles.Previews.implicits.previewImage
 
-    val myImg = tiledImage.simplePreview(0.25)
+    val myImg = tiledImage.base64Preview(0.25)
     val bString = myImg.first
     println(bString)
     bString._2.length should be > 10
   }
+
+  test("Test tile preview") {
+    import TilingStrategies.Grid._
+    import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
+    val imgPath = ImageTestFunctions.makeImagePath(50,50,"tif",
+      "/Users/mader/Dropbox/Informatics/spark-imageio/test-data/")
+
+    val tiledImage = sc.readTiledImage[Double](imgPath, 10, 25, 80).cache
+    import fourquant.tiles.Previews.implicits.previewTiles
+    import fourquant.arrays.Positions._
+    val myImg = tiledImage.tilePreview(1/5.0,10,10)
+    println(myImg)
+    myImg.length() should be > 10
+  }
+
   test("Quick Component Labeling") {
     import TilingStrategies.Grid._
 

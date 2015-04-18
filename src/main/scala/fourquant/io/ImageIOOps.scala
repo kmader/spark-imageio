@@ -29,11 +29,7 @@ object ImageIOOps extends Serializable {
    */
   val imIOAccess = new AtomicInteger(0)
 
-  if (loadTiffies)
-  { // append the tiff file reading not needed anymore
-    //val registry = IIORegistry.getDefaultInstance()
-    //registry.registerServiceProvider(new RawTiffImageReader.Spi())
-  }
+
   case class ImageInfo(count: Int, height: Int, width: Int, info: String)
 
   def createStream(input: InputStream) = ImageIO.createImageInputStream(input)
@@ -52,6 +48,24 @@ object ImageIOOps extends Serializable {
     val (a,b) = getAllReaders(stream,suffix)
     a ++ b
   }
+
+  /**
+  def getGeoTifReader(stream: ImageInputStream): Option[ImageReader] = {
+    val reader = new RawTiffImageReader.Spi().createReaderInstance()
+    try {
+      reader.setInput(stream)
+      Some(reader)
+    } catch {
+      case e: Throwable =>
+        val stmMsg = "Reader is: "+reader+
+          "and stream Input was:"+stream+" and had class:"+stream.getClass()+
+          " and was IIS "+ stream.isInstanceOf[ImageInputStream]
+        val outMsg = "Stream cannot be read :"+stmMsg+", "+e.getMessage
+        System.err.println(outMsg)
+        None
+    }
+  }
+    **/
 
   def getTifReader(stream: ImageInputStream): Option[ImageReader] = {
     val reader = new TIFFImageReaderSpi().createReaderInstance()

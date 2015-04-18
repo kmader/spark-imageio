@@ -48,12 +48,12 @@
 
 
     <dependencies>
-        <!-- for tiff imageio support and other geo-formats
+        <!-- for tiff imageio support and other geo-formats, doesn't load nasa images
         <dependency>
             <groupId>org.geotoolkit</groupId>
             <artifactId>geotk-coverageio</artifactId>
             <version>3.21</version>
-        </dependency> -->
+        </dependency>-->
 
         <dependency>
             <groupId>javax.media</groupId>
@@ -133,12 +133,13 @@
             <id>imagej.public</id>
             <url>http://maven.imagej.net/content/groups/public</url>
         </repository>
-        <!-- <repository>
-            Not needed for "*-geoapi-3.0" versions
+
+         <repository>
+            <!-- Not needed for "*-geoapi-3.0" versions -->
             <id>geotoolkit</id>
             <name>Geotk repository</name>
             <url>http://maven.geotoolkit.org</url>
-        </repository> -->
+        </repository>
 
         <repository>
             <id>apache-repo</id>

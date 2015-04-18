@@ -45,6 +45,9 @@ class ImageIOTests extends FunSuite with Matchers {
 
   }
 
+
+
+
   test("Load tile from big image multiple times") {
     val is = ImageIOOps.createStream(
       new FileInputStream(new File(bigImage))

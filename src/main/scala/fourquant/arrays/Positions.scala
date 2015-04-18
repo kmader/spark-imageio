@@ -73,6 +73,15 @@ trait ArrayPosition[T] extends Serializable {
   def setPos(a: T, b: Array[Int]): T
   def setPos[S: ArrayPosition](a: T, b: S): T = setPos(a,implicitly[ArrayPosition[S]].getPos(b))
 
+  /**
+   * Scale the position by a factor
+   * @param a the old position
+   * @param scale the factor to scale by (Math.round)
+   * @return the new position
+   */
+  def scalePos(a: T, scale: Double): T =
+    setPos(a,getPos(a).map(v=> Math.round(v.toDouble*scale).toInt))
+
   def getSize(a: T): Int = getPos(a).length
 
   def add(a: T, offset: Array[Int]): T = {
