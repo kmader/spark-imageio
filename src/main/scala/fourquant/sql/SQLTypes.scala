@@ -1,7 +1,8 @@
 package fourquant.sql
 
-import fourquant.sql.SQLTypes.{ArrayTile, ByteArrayTileUDT, DoubleArrayTileUDT}
-import org.apache.spark.sql.Row
+import fourquant.sql.SQLTypes.udt.{BooleanArrayTileUDT, ByteArrayTileUDT, DoubleArrayTileUDT}
+import fourquant.sql.SQLTypes.ArrayTile
+import org.apache.spark.sql.{SQLContext, Row}
 import org.apache.spark.sql.catalyst.expressions.GenericMutableRow
 import org.apache.spark.sql.types._
 
@@ -72,10 +73,23 @@ object SQLTypes {
     def getCols = getArray()(0).length
     def getRow(i: Int) = getArray()(i)
     def getCol(j: Int) = getArray().map(_(j))
+    override def toString() = "Tile["+getArray()(0)(0).getClass.getSimpleName+
+      "]("+getRows+","+getCols+")"
   }
 
   object ArrayTile extends Serializable {
     def apply[T : ClassTag](rows: Int, cols: Int, inArr: Array[T]) = {
+      new ArrayTile[T]{
+        private lazy val rwArray = rewrapArray(rows,cols,inArr)
+        override def getArray(): Array[Array[T]] = rwArray
+        override def flatten(): Array[T] = inArr
+      }
+    }
+
+    //TODO check this function
+    @deprecated("1.0","should not use in production until tested or replaced with matrix " +
+      "implementation")
+    def rewrapArray[T: ClassTag](rows: Int, cols: Int, inArr: Array[T]): Array[Array[T]] = {
       val outArray = new Array[Array[T]](rows)
       var i = 0
       var ind = 0
@@ -85,33 +99,100 @@ object SQLTypes {
         while(j<cols) {
           outArray(i)(j)=inArr(ind)
           ind+=1
+          j+=1
         }
         i+=1
       }
-      new ArrayTile[T]{
-        override def getArray(): Array[Array[T]] = outArray
+      outArray
+    }
+  }
+  object udf extends Serializable {
+    def threshold[T](inTile: ArrayTile[T],func: (T) => Boolean): BooleanArrayTile =
+      BooleanArrayTile(inTile.getRows,inTile.getCols,inTile.flatten().map(func))
+    def pixelCount(inTile: ArrayTile[Boolean]): Int = inTile.flatten().
+      filter(_.booleanValue).length.toInt
 
-        override def flatten(): Array[T] = getArray().flatten
-      }
+    def registerAll(sq: SQLContext) = {
+      sq.udf.register("threshold",(i: ArrayTile[Double], minVal: Double) => threshold(i,
+        (v: Double) => v>minVal))
+      sq.udf.register("pixelCount",(it: ArrayTile[Boolean]) => pixelCount(it))
     }
   }
 
-  class DoubleArrayTileUDT extends ArrayTileUDT[Double] {
-    override def getElementType: DataType = DoubleType
+  /**
+   * Contains the user-defined types so they are easily distinguished from the standard code
+   */
+  object udt extends Serializable {
+    class DoubleArrayTileUDT extends ArrayTileUDT[Double] {
+      override def getElementType: DataType = DoubleType
 
-    override val ct: ClassTag[Double] = implicitly[ClassTag[Double]]
-  }
-  class ByteArrayTileUDT extends ArrayTileUDT[Byte] {
-    override def getElementType: DataType = ByteType
+      override val ct: ClassTag[Double] = implicitly[ClassTag[Double]]
+    }
+    class ByteArrayTileUDT extends ArrayTileUDT[Byte] {
+      override def getElementType: DataType = ByteType
 
-    override val ct: ClassTag[Byte] = implicitly[ClassTag[Byte]]
+      override val ct: ClassTag[Byte] = implicitly[ClassTag[Byte]]
+    }
+    class BooleanArrayTileUDT extends ArrayTileUDT[Boolean] {
+      override def getElementType: DataType = BooleanType
+      override val ct: ClassTag[Boolean] = implicitly[ClassTag[Boolean]]
+    }
   }
+
 
 }
 
 
+/**
+ * NOTE: These should not be used, since there is no contract that they will come out like this
+ * from other functions, use the ArrayTile construct
+ */
 @SQLUserDefinedType(udt = classOf[DoubleArrayTileUDT])
 trait DoubleArrayTile extends ArrayTile[Double]
 
+object DoubleArrayTile extends Serializable {
+  def apply(rows: Int,cols: Int, inArr: Array[Double]) = new DoubleArrayTile {
+    lazy val rwArray = ArrayTile.rewrapArray(rows,cols,inArr)
+    override def getArray(): Array[Array[Double]] = rwArray
+
+    override def flatten(): Array[Double] = inArr
+  }
+
+  def apply(inArr: Array[Array[Double]]) = new DoubleArrayTile {
+    override def getArray(): Array[Array[Double]] = inArr
+    override def flatten(): Array[Double] = getArray().flatten
+  }
+}
+
+
 @SQLUserDefinedType(udt = classOf[ByteArrayTileUDT])
 trait ByteArrayTile extends ArrayTile[Byte]
+
+object ByteArrayTile extends Serializable {
+  def apply(rows: Int,cols: Int, inArr: Array[Byte]) = new ByteArrayTile {
+    lazy val rwArray = ArrayTile.rewrapArray(rows,cols,inArr)
+    override def getArray(): Array[Array[Byte]] = rwArray
+    override def flatten(): Array[Byte] = getArray().flatten
+  }
+
+  def apply(inArr: Array[Array[Byte]]) = new ByteArrayTile {
+    override def getArray(): Array[Array[Byte]] = inArr
+    override def flatten(): Array[Byte] = getArray().flatten
+  }
+}
+
+@SQLUserDefinedType(udt = classOf[BooleanArrayTileUDT])
+trait BooleanArrayTile extends ArrayTile[Boolean]
+
+object BooleanArrayTile extends Serializable {
+  def apply(rows: Int,cols: Int, inArr: Array[Boolean]) = new BooleanArrayTile {
+    lazy val rwArray = ArrayTile.rewrapArray(rows,cols,inArr)
+    override def getArray() = rwArray
+    override def flatten() = getArray().flatten
+  }
+
+  def apply(inArr: Array[Array[Boolean]]) = new BooleanArrayTile {
+    override def getArray() = inArr
+    override def flatten() = getArray().flatten
+  }
+}
