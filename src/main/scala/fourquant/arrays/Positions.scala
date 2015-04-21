@@ -15,9 +15,13 @@ object Positions {
 
     override def getX(a: (String, Int,Int)): Int = a._2
 
-    override def getZ(a: (String, Int, Int)): Int = 0
-
     override def setPos(a: (String,Int,Int), b: Array[Int]): (String, Int, Int) = (a._1,b(0),b(1))
+
+    /** metadata **/
+    override def getMetadata(a: (String,Int,Int)): String = a._1
+
+    override def setMetadata(a: (String, Int, Int), meta: String): (String, Int, Int) =
+      (meta,a._2,a._3)
   }
   implicit val normalSliceToArrayPosition = new ArrayPosition[(Int,Int)] {
     override def getPos(a: (Int,Int)): Array[Int] = Array(a._1,a._2)
@@ -28,16 +32,28 @@ object Positions {
 
     override def getX(a: (Int,Int)): Int = a._1
 
-    override def getZ(a: (Int, Int)): Int = 0
-
     override def setPos(a: (Int,Int), b: Array[Int]): (Int, Int) = (b(0),b(1))
+
+    /** metadata **/
+    override def getMetadata(a: (Int, Int) ): String = ""
+    override def setMetadata(a: (Int, Int), meta: String): (Int, Int) = {
+      System.err.println("This type cannot store metadata")
+      a
+    }
   }
 
   implicit class SimplePosition[T: ArrayPosition](cp: T) extends Serializable {
     def getPos() = implicitly[ArrayPosition[T]].getPos(cp)
+    def scalePos(scale: Double) = implicitly[ArrayPosition[T]].scalePos(cp,scale)
     def getX() = implicitly[ArrayPosition[T]].getX(cp)
     def getY() = implicitly[ArrayPosition[T]].getY(cp)
     def getZ() = implicitly[ArrayPosition[T]].getZ(cp)
+    def getTime() = implicitly[ArrayPosition[T]].getTime(cp)
+
+    def getMetadata() = implicitly[ArrayPosition[T]].getMetadata(cp)
+    def setMetadata(meta: String) = implicitly[ArrayPosition[T]].setMetadata(cp,meta)
+
+    def +[S: ArrayPosition](offset: S) = implicitly[ArrayPosition[T]].add(cp,offset)
   }
 
 }
@@ -63,7 +79,6 @@ trait GlobalPosition[T] extends Serializable {
  */
 trait ArrayPosition[T] extends Serializable {
   def getPos(a: T): Array[Int]
-
   /**
    * Allows the arrayposition to be updated without changing the other data in the structure
    * @param a old position
@@ -95,9 +110,25 @@ trait ArrayPosition[T] extends Serializable {
   def add[S: ArrayPosition](a: T,offset: S): T =
     add(a,implicitly[ArrayPosition[S]].getPos(offset))
 
+  /** metadata **/
+  def getMetadata(a: T): String
+
+  /**
+   * Creates a new element with the given metadata
+   * @param a the old variable
+   * @param meta the new meta-data contents
+   * @return
+   */
+  def setMetadata(a: T, meta: String): T
+
+  def appendMetadata(a: T, meta: String): T = setMetadata(a,getMetadata(a)+meta)
+
   /** basic 2D functions **/
   def getX(a: T): Int
   def getY(a: T): Int
-  def getZ(a: T): Int
+  /** 3d function **/
+  def getZ(a: T): Int = 0
 
+  def getTime(a: T): Int = 0
 }
+

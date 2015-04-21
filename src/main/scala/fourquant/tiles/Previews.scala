@@ -35,21 +35,21 @@ object Previews extends Serializable {
           g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
             RenderingHints.VALUE_INTERPOLATION_BICUBIC)
 
-
           val sp = rdd.bytePreview(scale).map{
             case (pos,data) =>
               val newPos = implicitly[ArrayPosition[A]].getPos(pos).map(i =>
                 (i.toDouble*scale).toInt)
               (newPos,data)
-          }.foreach{
+          }.collect().foreach{
             case (pos,data) =>
               pngReader.setInput(ImageIOOps.createStream(new ByteArrayInputStream(data)))
               val bImg = pngReader.read(0)
-
+              g.synchronized { // only write one at a time
                 g.drawImage(bImg, pos(0), pos(1),
-                  pos(0)+bImg.getWidth,
+                  pos(0) + bImg.getWidth,
                   bImg.getHeight,
                   0, 0, bImg.getWidth, bImg.getHeight, null)
+              }
 
           }
           val os = new ByteArrayOutputStream()

@@ -31,5 +31,20 @@ class ArrayTests extends FunSuite with Matchers {
     thresh2.head._1.getX shouldBe 1
     thresh2.head._1.getY shouldBe 1
   }
+  def getX[A : ArrayPosition](a: A) = implicitly[ArrayPosition[A]].getX(a)
+  def getY[A : ArrayPosition](a: A) = implicitly[ArrayPosition[A]].getY(a)
+  def getPos[A : ArrayPosition](a: A) = implicitly[ArrayPosition[A]].getPos(a)
+  def getMeta[A : ArrayPosition](a: A) = implicitly[ArrayPosition[A]].getMetadata(a)
+  def setMeta[A : ArrayPosition](a: A, s: String) = implicitly[ArrayPosition[A]].setMetadata(a,s)
+
+
+  test("Get position information") {
+    val tPos = ("junk", 100, 90)
+    getX(tPos) shouldBe 100
+    getY(tPos) shouldBe 90
+    getPos(tPos) shouldBe Array(100L, 90L)
+    getMeta(tPos) shouldBe "junk"
+    setMeta(tPos, "myjunk")._1 shouldBe "myjunk"
+  }
 
 }

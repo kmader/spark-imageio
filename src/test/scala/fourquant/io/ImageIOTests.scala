@@ -9,6 +9,7 @@ import fourquant.tiles.TilingStrategies
 import fourquant.tiles.TilingStrategies.Simple2DGrid
 import org.apache.commons.io.output.ByteArrayOutputStream
 import org.scalatest.{FunSuite, Matchers}
+import org.tukaani.xz.SeekableFileInputStream
 
 class ImageIOTests extends FunSuite with Matchers {
 
@@ -17,6 +18,19 @@ class ImageIOTests extends FunSuite with Matchers {
   val tiledGeoImage = testDataDir + "LC81390452014295LGN00_B1.TIF"
   val verbose = false
   val heavy = false
+
+  test("Load a geo-image with JAI") {
+    //val tgFact = new GeoTIFFFactory()
+
+
+    val p = new SeekableFileInputStream(
+      new File(tiledGeoImage)
+    )
+    //val td = new GeoTIFFDirectory()
+    //val td2 = new GeoTIFFDirectory()
+    //tgFact.createDirectory()
+    //val tgImg = tgFact.createDirectory()
+  }
 
   test("Load a tile from a test image multiple times") {
     val is = ImageTestFunctions.makeVSImg(500, 500, "tif")
@@ -44,9 +58,6 @@ class ImageIOTests extends FunSuite with Matchers {
     val newFile = ImageTestFunctions.makeImagePath(500,500,"tif",testDataDir)
 
   }
-
-
-
 
   test("Load tile from big image multiple times") {
     val is = ImageIOOps.createStream(
@@ -121,6 +132,8 @@ class ImageIOTests extends FunSuite with Matchers {
     }
 
   }
+
+
 
 
   test("Read size of big image") {

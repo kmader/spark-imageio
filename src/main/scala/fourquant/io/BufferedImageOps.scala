@@ -2,7 +2,9 @@ package fourquant.io
 
 import java.awt.image.{BufferedImage, DataBufferByte, Raster}
 
+import fourquant.io.ScifioOps.SparkImage
 import org.apache.spark.annotation.Experimental
+import org.apache.spark.sql.types.{DataType, UserDefinedType}
 import org.nd4j.linalg.factory.Nd4j
 
 import scala.reflect.ClassTag
@@ -314,5 +316,8 @@ object BufferedImageOps {
     }
     bm
   }
+
+
+
 
 }

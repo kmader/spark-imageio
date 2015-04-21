@@ -30,8 +30,6 @@ val heavy = false
     al(0) shouldBe 40000
     al(1) shouldBe 40000
 
-
-
     val smallRegion = fqOpen.openRegion2D(tiledGeoImage,new DoubleType(),1000,1000,100,100)
 
     smallRegion.headOption match {
@@ -60,13 +58,10 @@ val heavy = false
     al(0) shouldBe 7621
     al(1) shouldBe 7791
 
-
-
     val smallRegion = fqOpen.openRegion2D(tiledGeoImage,new DoubleType(),1000,1000,100,100)
 
     smallRegion.headOption match {
       case Some(img) =>
-
         val dim = {
           val td = new Array[Long](img.getImg().numDimensions())
           img.getImg().dimensions(td)
@@ -75,12 +70,17 @@ val heavy = false
         println("Dim:"+dim.mkString(","))
       case None => assert(false,"Needs to read at least one image")
     }
+
+    for(i<-0 until creader.getImageCount) {
+      println(("img",i,
+        "plane-count",creader.getPlaneCount(i)
+        ))
+    }
   }
 
   test("Reading small byte region of nasa image") {
     val valRegion = ScifioOps.readRegion(tiledGeoImage, Array(1000L,1000L),Array(100L,100L))
     valRegion.length shouldBe (100*100*2)
-
     println(("Out-length",valRegion.length,"bytes per pixel",valRegion.length/(100*100)))
   }
 
@@ -99,6 +99,5 @@ val heavy = false
       case None =>
         assert(false,"Should have an integer array underneath")
     }
-
   }
 }
