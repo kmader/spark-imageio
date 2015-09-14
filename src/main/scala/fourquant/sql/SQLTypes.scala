@@ -111,11 +111,25 @@ object SQLTypes {
       BooleanArrayTile(inTile.getRows,inTile.getCols,inTile.flatten().map(func))
     def pixelCount(inTile: ArrayTile[Boolean]): Int = inTile.flatten().
       filter(_.booleanValue).length.toInt
+    def getPixelVectors[T](offsetX: Int, offsetY: Int, inTile: ArrayTile[T],func: (T) => Boolean):
+      Array[(Int,Int)] = {
+        {
+          val inArr = inTile.getArray()
+          for (x <- 0 until inArr.length;
+             cArr = inArr(x);
+             y <- 0 until cArr.length;
+             v = cArr(y);
+             if func(v))
+          yield (offsetX+x, offsetY+y)
+      }.toArray
+    }
 
     def registerAll(sq: SQLContext) = {
       sq.udf.register("threshold",(i: ArrayTile[Double], minVal: Double) => threshold(i,
         (v: Double) => v>minVal))
       sq.udf.register("pixelCount",(it: ArrayTile[Boolean]) => pixelCount(it))
+      sq.udf.register("sparseThreshold",(x: Int, y: Int, i: ArrayTile[Double], minVal: Double) =>
+        getPixelVectors[Double](x,y,i,(v: Double) => v>minVal))
     }
   }
 

@@ -1,5 +1,7 @@
 package fourquant.arrays
 
+import breeze.linalg.DenseMatrix
+import breeze.math.Complex
 import fourquant.arrays.BreezeOps._
 import org.scalatest.{FunSuite, Matchers}
 /**
@@ -8,6 +10,7 @@ import org.scalatest.{FunSuite, Matchers}
 class ArrayTests extends FunSuite with Matchers {
   val testArray = Array(Array(1.0,2.0,3.0),Array(4.0,5.0,6.0))
   import Positions._
+  import breeze.signal._
   test("2D Array to Breeze Matrix") {
 
     val mat = BreezeOps.array2DtoMatrix(testArray)
@@ -44,7 +47,27 @@ class ArrayTests extends FunSuite with Matchers {
     getY(tPos) shouldBe 90
     getPos(tPos) shouldBe Array(100L, 90L)
     getMeta(tPos) shouldBe "junk"
-    setMeta(tPos, "myjunk")._1 shouldBe "myjunk"
+    getMeta(setMeta(tPos, "myjunk")) shouldBe "myjunk"
+    setMeta(tPos, "lazyjunk")._1 shouldBe "lazyjunk"
+    getMeta(tPos) shouldBe "junk" // the original should not have changed
   }
+
+  test("Make a complex image") {
+
+    val oArr = DenseMatrix.create(21,21,{
+      for(x<- -10 to 10; y<- -10 to 10)
+        yield Complex(x,y)}.toArray)
+
+    val fftImage = fourierTr(oArr)
+    val invImage = iFourierTr(fftImage)
+    invImage.toArray.zip(oArr.toArray).foreach{
+      case (postTrans,preTrans) =>
+        postTrans.real shouldBe preTrans.real +- 0.01
+        postTrans.imag shouldBe preTrans.imag +- 0.01
+    }
+  }
+
+
+
 
 }

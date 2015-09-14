@@ -1,13 +1,13 @@
 package fourquant.sql
 
 import fourquant.ImageSparkInstance
-import fourquant.sql.SQLTypes.{ArrayTile, udf}
+import fourquant.sql.SQLTypes.ArrayTile
 import fourquant.utils.SilenceLogs
 import org.apache.spark.mllib.linalg
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.sql.catalyst.expressions.GenericMutableRow
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{SaveMode, Row, SQLContext}
+import org.apache.spark.sql.{Row, SQLContext, SaveMode}
 import org.scalatest.{FunSuite, Matchers}
 
 /**
@@ -167,7 +167,10 @@ object SQLTestTools extends Serializable {
 
   case class NamedPosition(name: String, position: PosData)
 
-
+  class ImageType extends DataType {
+    override def defaultSize: Int = ???
+    override def asNullable = this
+  }
   object PosData extends Serializable {
     def apply(x: Int, y: Int, z: Int) = new PosData {
       override def getX: Int = x
@@ -212,7 +215,7 @@ object SQLTestTools extends Serializable {
           require(r.length==4,"Wrong row-length given "+r.length+" instead of 4")
           val x = r.getInt(0)
           val y = r.getInt(1)
-          val z = r. getInt(2)
+          val z = r.getInt(2)
           val pos = r.getAs[Iterable[Int]](3).toArray
           PosData(x,y,z)
       }

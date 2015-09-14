@@ -1,6 +1,10 @@
 package fourquant
 
+import java.io.File
+import javax.imageio.ImageIO
+
 import fourquant.arrays.{BreezeOps, Positions}
+import fourquant.io.BufferedImageOps
 import fourquant.io.BufferedImageOps.ArrayImageMapping
 import fourquant.io.ImageIOOps._
 import fourquant.labeling.ConnectedComponents
@@ -16,19 +20,26 @@ import scala.reflect.ClassTag
 /**
  * Created by mader on 4/15/15.
  */
-class demo {
-  def useLocal: Boolean = false
+class demo  {
+  def useLocal: Boolean = true
 
-  def useCloud: Boolean = true
+  def useCloud: Boolean = false
+
+  def bigTests: Boolean = false
 
   def defaultPersistLevel = StorageLevel.MEMORY_AND_DISK
 
   System.setProperty("java.io.tmpdir","/scratch/")
+  lazy val localPath = if(bigTests) {
+    "/Volumes/WORKDISK/scratch/"
+  } else {
+    "/scratch/"
+  }
 
   lazy val sconf = {
 
     val nconf = if(useLocal) {
-      new SparkConf().setMaster("local[4]").set("spark.local.dir","/Volumes/WORKDISK/scratch/")
+      new SparkConf().setMaster("local[4]").set("spark.local.dir",localPath)
     } else {
       new SparkConf(). //"spark://MacBook-Air.local:7077"
         set("java.io.tmpdir","/scratch/").set("spark.local.dir","/scratch/")
@@ -94,7 +105,19 @@ class demo {
 
   def run() = {
     import fourquant.io.BufferedImageOps.implicits.charImageSupport
-    val (tileImage,nonZeroEntries) = makeSimpleTiledImageHelperGeneric[Char](esriImage,500,500,120)
+    val (tileImage,nonZeroEntries) = makeSimpleTiledImageHelperGeneric[Char](esriImage,256,256,120)
+
+    tileImage.foreach{
+      case((filename,x,y),img) =>
+        val outPath = testDataDir+File.separator+"tiles"+
+          File.separator
+        new java.io.File(outPath).mkdirs()
+
+        val bm = BufferedImageOps.fromArrayToImage(img)
+          val outImageName = x.toString+"_"+y.toString+".png"
+        ImageIO.write(bm,"png",new File(outPath+outImageName))
+    }
+
     val nzCount = nonZeroEntries.count
     implicit val doubleLabelCrit = new LabelCriteria[Double] {
       override def matches(a: Double, b: Double): Boolean = Math.abs(a-b)<0.75 // match only

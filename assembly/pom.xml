@@ -43,6 +43,11 @@
             <artifactId>spark-imageio</artifactId>
             <version>${spio.version}</version>
         </dependency>
+       <!-- <dependency>
+            <groupId>fourquant</groupId>
+            <artifactId>spark-ij</artifactId>
+            <version>${spio.version}</version>
+        </dependency> -->
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.binary.version}</artifactId>

@@ -3,7 +3,7 @@ package fourquant.sql
 import fourquant.ImageSparkInstance
 import fourquant.io.ImageIOOps._
 import fourquant.io.ImageTestFunctions
-import fourquant.sql.ImageAnalysisTools.NamedTile
+import fourquant.sql.ImageAnalysisTools.{PosArrayTile, NamedTile}
 import fourquant.sql.SQLTestTools.NamedArrayTile
 import fourquant.sql.SQLTypes.{ArrayTile, udf}
 import fourquant.tiles.TilingStrategies
@@ -23,6 +23,13 @@ Serializable {
 
   override def useCloud: Boolean = false
 
+  def countPoints(in: Array[Array[Boolean]]): Int = in.flatten.map(if(_) 1 else 0).sum
+  test ("Class Test") {
+    val simpleArr = Array(Array(true,true,false))
+    countPoints(simpleArr) shouldBe 1
+    val emptyArr = Array(new Array[Boolean](0))
+    countPoints(emptyArr) shouldBe 0
+  }
 
   test("ArrayTile SQL Test") {
 
@@ -43,6 +50,28 @@ Serializable {
     val mQuery = sqlContext.sql("SELECT name,pixelCount(threshold(dat,0.0)) FROM Tiles")
     println(mQuery.collect().mkString("\n"))
     mQuery.first.getInt(1) shouldBe 2
+
+  }
+
+  test("SparseThresh SQL Test") {
+
+    val sList = sc.parallelize(0 to 10).map{
+      (i: Int) => PosArrayTile(i,-i,DoubleArrayTile(1,2,Array(1.0,2.0)))
+    }
+
+    val sqlContext = new SQLContext(sc)
+
+    import sqlContext.implicits._
+    val df = sList.toDF
+    df.registerTempTable("Tiles")
+
+    val sQuery = sqlContext.sql("SELECT * FROM Tiles")
+    println(sQuery.collect().mkString("\n"))
+    sQuery.count shouldBe 11
+    udf.registerAll(sqlContext)
+    val mQuery = sqlContext.sql("SELECT x,y,sparseThreshold(x,y,tile,0.0) FROM Tiles")
+    println(mQuery.collect().mkString("\n"))
+    mQuery.first.getInt(0) shouldBe 0
 
   }
 
@@ -77,16 +106,22 @@ Serializable {
 
 
       val nonZeroEntries = sq.sql("""
-        SELECT x,y,pixelCount(threshold(tile,0.0)) PIXSUM FROM Tiles SORT BY PIXSUM ASC
+        SELECT x,y,pixelCount(threshold(tile,0.0)) FROM Tiles
+        WHERE pixelCount(threshold(tile,0.0))>0
                                   """)
-
-      println(nonZeroEntries.take(5).mkString("\n"))
+      val nzTiles = nonZeroEntries.count
+      println(nonZeroEntries.head(5).mkString("\n"))
 
       val nzCount = sq.sql("SELECT SUM(pixelCount(threshold(tile,0.0))) FROM Tiles").head.getLong(0)
 
-      println(("Tile Count",tileCount,"Non-Zero Count",nzCount))
+      println(("Tile Count",tileCount,
+        "Non Zero Tiles",nzTiles,
+        "Non-Zero Count",nzCount
+        ))
 
-
+      tileCount shouldBe 50
+      nzTiles shouldBe 18
+      nzCount shouldBe 298
     }
 
 
@@ -97,4 +132,5 @@ Serializable {
 
 object ImageAnalysisTools {
   case class NamedTile(name: String, x: Int, y: Int, tile: DoubleArrayTile)
+  case class PosArrayTile(x: Int, y: Int, tile: DoubleArrayTile)
 }

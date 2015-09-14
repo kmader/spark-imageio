@@ -27,6 +27,7 @@ trait ImageSparkInstance {
   val driverLocalDir = if (bigTests) "/Volumes/WORKDISK/scratch/" else "/scratch/"
 
   System.setProperty("java.io.tmpdir",driverLocalDir)
+  System.setProperty("spark.driver.allowMultipleContexts", "true");
 
   lazy val sconf = {
 

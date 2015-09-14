@@ -32,7 +32,22 @@ object ImageIOOps extends Serializable {
 
   case class ImageInfo(count: Int, height: Int, width: Int, info: String)
 
+
+  /**
+   * For creating an input stream from the PortableDataStream
+   * @param input
+   * @return
+   */
   def createStream(input: InputStream) = ImageIO.createImageInputStream(input)
+
+  /**
+   * Create an input stream from a bytearray (byteswritable)
+   * @param bArray
+   * @return
+   */
+  def createStream(bArray: Array[Byte]) = ImageIO.createImageInputStream(
+    new ByteArrayInputStream(bArray)
+  )
 
   private def getAllReaders(stream: ImageInputStream,suffix: Option[String] = None) = {
     ImageIO.scanForPlugins()
@@ -169,6 +184,17 @@ object ImageIOOps extends Serializable {
       infile.getName().split("[.]").reverse.headOption,
       x,y,w,h,tempDir)
 
+  /**
+   * THe base function for reading images in as tiles
+   * @param stream
+   * @param suffix
+   * @param x
+   * @param y
+   * @param w
+   * @param h
+   * @param tempDir
+   * @return
+   */
   private[io] def readTile(stream: ImageInputStream, suffix: Option[String],
                            x: Int, y: Int, w: Int, h: Int, tempDir: Option[String]):
   Option[BufferedImage] = {
@@ -189,6 +215,39 @@ object ImageIOOps extends Serializable {
       case None => None
     }
   }
+
+  def readWholeImage(infile: File, tempDir: Option[String]):
+  Option[BufferedImage] =
+    readWholeImage(createStream(new FileInputStream(infile)),
+      infile.getName().split("[.]").reverse.headOption,
+      tempDir)
+
+  /**
+   * Read the image at once
+   * @param stream
+   * @param suffix
+   * @param tempDir
+   * @return
+   */
+  private[io] def readWholeImage(stream: ImageInputStream, suffix: Option[String],
+                                 tempDir: Option[String]):
+  Option[BufferedImage] = {
+
+    getReader(stream,suffix) match {
+      case Some(reader) =>
+        try {
+          Some(reader.read(0))
+        } catch {
+          case  e : Throwable =>
+            e.printStackTrace()
+            println("Image cannot be loaded, or likely is out of bounds, returning none")
+            None
+        }
+      case None => None
+    }
+  }
+
+
 
   def readTileArray[T: ArrayImageMapping](stream: ImageInputStream,suffix: Option[String],
                                           x: Int, y: Int, w: Int, h: Int,
@@ -219,6 +278,18 @@ object ImageIOOps extends Serializable {
   }
 
 
+  def readWholeImageArray[T: ArrayImageMapping](stream: ImageInputStream,suffix: Option[String],
+                                          tempDir: Option[String]):
+  Option[Array[Array[T]]] = {
+    readWholeImage(stream,suffix,tempDir).map(_.as2DArray[T])
+  }
+
+  import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
+  def readWholeImageArrayDouble(stream: ImageInputStream, suffix: Option[String],
+                                tempDir: Option[String]) =
+    readWholeImageArray[Double](stream, suffix, tempDir)
+
+
   /**
    * Keep all the scifio related tools together
    */
@@ -243,10 +314,6 @@ object ImageIOOps extends Serializable {
     }
   }
 
-
-  def scifioReadTile() = {
-
-  }
 
   implicit class scifioSC(sc: SparkContext) extends Serializable {
     import fourquant.utils.IOUtils.LocalPortableDataStream
@@ -279,6 +346,70 @@ object ImageIOOps extends Serializable {
   implicit class iioSC(sc: SparkContext) extends Serializable {
     import fourquant.io.BufferedImageOps.implicits.directDoubleImageSupport
     import fourquant.utils.IOUtils.LocalPortableDataStream
+
+    /**
+     * Load the images as a series of 2D arrays
+     * @param path hadoop-style path to the image files (can contain wildcards)
+     * @param partitionCount number of partitions (cores * 2-4)
+     * @tparam T (the type of the output image)
+     * @return an RDD with a key of the image names, and tile coordinates, and a value of the data
+     *         as a 2D array typed T
+     */
+    def readWholeImages[T : ArrayImageMapping](path: String, partitionCount: Int) = {
+      val tempDir = sc.getConf.getOption("spark.local.dir")
+      sc.binaryFiles(path).mapValues{
+        case pds: PortableDataStream =>
+          val cachedPDS = pds.cache()
+          val imInfo = getImageInfo(createStream(cachedPDS.getUseful()),pds.getSuffix(),tempDir)
+          (cachedPDS,imInfo)
+      }.repartition(partitionCount).mapPartitions{
+        inPart =>
+          for (cChunk <- inPart;
+               curPath = cChunk._1;
+               suffix =  curPath.split("[.]").reverse.headOption;
+               curInput = cChunk._2._1.getUseful();
+               emptyVal = curInput.reset();
+               curStream = createStream(curInput);
+               curImageData <- readWholeImageArray[T](curStream,suffix,tempDir)
+          )
+            yield (curPath,curImageData)
+      }
+    }
+
+    def readWholeImagesDouble(path: String,pc: Int) = readWholeImages[Double](path,pc)
+
+
+    /** hadoop things **/
+    import org.apache.hadoop.io._;
+    /**
+     * Read an sequence file as a series of image
+     * @param path
+     * @param partitionCount
+     * @tparam T
+     * @return
+     */
+    def readImageSequence[T : ArrayImageMapping](path: String, partitionCount: Int) = {
+      val tempDir = sc.getConf.getOption("spark.local.dir")
+      sc.sequenceFile(path,classOf[Text],classOf[BytesWritable]).map{
+        case (pth: Text,bw: BytesWritable) =>
+          val byteData = bw.copyBytes()
+          val imInfo = getImageInfo(createStream(byteData),
+            pth.toString.split(".").reverse.headOption,tempDir)
+          (pth.toString(),(byteData,imInfo))
+      }.repartition(partitionCount).mapPartitions{
+        inPart =>
+          for (cChunk <- inPart;
+               curPath = cChunk._1;
+               suffix =  curPath.split("[.]").reverse.headOption;
+               curStream = createStream(cChunk._2._1);
+               curImageData <- readWholeImageArray[T](curStream,suffix,tempDir)
+          )
+            yield (curPath,curImageData)
+      }
+    }
+
+    def readImageSequenceDouble(path: String,pc: Int) = readImageSequence[Double](path,pc)
+
     /**
      * Load the image(s) as a series of 2D tiles
      * @param path hadoop-style path to the image files (can contain wildcards)
