@@ -22,7 +22,7 @@ import scala.collection.mutable
  * Created by mader on 2/27/15.
  */
 object ImageIOOps extends Serializable {
-  val verbose = true
+  val verbose = false
   val loadTiffies=false
   /**
    * object to limit access to imageio

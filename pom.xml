@@ -83,13 +83,13 @@
         </dependency>
 
 
-        <!-- geotiff -->
+        <!-- geotiff not needed at the moment
         <dependency>
             <groupId>geotiff</groupId>
             <artifactId>geotiff-jai</artifactId>
             <version>${geotiff-jai.version}</version>
         </dependency>
-
+-->
         <!-- for numerics and gpu code -->
         <dependency>
             <groupId>org.nd4j</groupId>

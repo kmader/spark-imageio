@@ -171,7 +171,7 @@ class LabelTests extends FunSuite with Matchers with SilenceLogs with ImageSpark
     val nzCount = nonZeroEntries.count()
 
     { // unique namespace for implicit variables
-    implicit val doubleLabelCrit = new LabelCriteria[Double] {
+      implicit val doubleLabelCrit = new LabelCriteria[Double] {
         override def matches(a: Double, b: Double): Boolean = true //match everything
       }
       val compLabel = ConnectedComponents.Labeling2D(nonZeroEntries, (1, 1))
