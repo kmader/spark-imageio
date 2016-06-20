@@ -1,10 +1,11 @@
-package fourquant.sql
+package org.apache.spark.fourquant
 
-import fourquant.sql.SQLTypes.udt.{BooleanArrayTileUDT, ByteArrayTileUDT, DoubleArrayTileUDT}
-import fourquant.sql.SQLTypes.ArrayTile
-import org.apache.spark.sql.{SQLContext, Row}
+import org.apache.spark.fourquant.SQLTypes.ArrayTile
+import org.apache.spark.fourquant.SQLTypes.udt.{BooleanArrayTileUDT, ByteArrayTileUDT, DoubleArrayTileUDT}
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericMutableRow
 import org.apache.spark.sql.types._
+import org.apache.spark.sql.{Row, SQLContext}
 
 import scala.reflect.ClassTag
 
@@ -26,7 +27,7 @@ object SQLTypes {
       )
     }
 
-    override def serialize(obj: Any): Row = {
+    override def serialize(obj: ArrayTile[T]): InternalRow = {
       val row = new GenericMutableRow(3)
       obj match {
         case pData: ArrayTile[T] =>

@@ -5,7 +5,8 @@ import fourquant.io.ImageIOOps._
 import fourquant.io.ImageTestFunctions
 import fourquant.sql.ImageAnalysisTools.{PosArrayTile, NamedTile}
 import fourquant.sql.SQLTestTools.NamedArrayTile
-import fourquant.sql.SQLTypes.{ArrayTile, udf}
+import org.apache.spark.fourquant.{DoubleArrayTile, SQLTypes}
+import SQLTypes.{ArrayTile, udf}
 import fourquant.tiles.TilingStrategies
 import fourquant.utils.SilenceLogs
 import org.apache.spark.sql.SQLContext

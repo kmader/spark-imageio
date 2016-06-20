@@ -1,10 +1,12 @@
 package fourquant.sql
 
 import fourquant.ImageSparkInstance
-import fourquant.sql.SQLTypes.ArrayTile
+import org.apache.spark.fourquant.{PosDataUDT, ByteArrayTile, DoubleArrayTile, SQLTypes}
+import SQLTypes.ArrayTile
 import fourquant.utils.SilenceLogs
 import org.apache.spark.mllib.linalg
 import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericMutableRow
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Row, SQLContext, SaveMode}
@@ -121,7 +123,7 @@ Serializable {
       import sqlContext.implicits._
       val df = sList.toDF
       val frRead = df.collect()
-      df.save(testDataDir+"/vectorTable."+format,format,SaveMode.Overwrite)
+      df.write.format(format).mode(SaveMode.Overwrite).save(testDataDir+"/vectorTable."+format)
       val reRead = sqlContext.load(testDataDir+"/vectorTable."+format,format)
       println(frRead.zip(reRead.collect()).map(a => a._1 +"\t"+a._2).mkString("\n"))
       reRead.count shouldBe 11
@@ -136,7 +138,7 @@ Serializable {
       import sqlContext.implicits._
       val df = sList.toDF
       val frRead = df.collect()
-      df.save(testDataDir+"/arrayTable."+format,format,SaveMode.Overwrite)
+      df.write.format(format).mode(SaveMode.Overwrite).save(testDataDir+"/arrayTable."+format)
       val reRead = sqlContext.load(testDataDir+"/arrayTable."+format,format)
       println(frRead.zip(reRead.collect()).map(a => a._1 +"\t"+a._2).mkString("\n"))
       reRead.count shouldBe 11
@@ -150,12 +152,14 @@ Serializable {
 }
 
 
-@SQLUserDefinedType(udt = classOf[fourquant.sql.SQLTestTools.PosDataUDT])
+@SQLUserDefinedType(udt = classOf[PosDataUDT])
 trait PosData extends Serializable {
   def getX: Int
   def getY: Int
   def getZ: Int
 }
+
+
 
 //README needs a different name otherwise the ._ import screws everything up
 object SQLTestTools extends Serializable {
@@ -179,58 +183,5 @@ object SQLTestTools extends Serializable {
     }
   }
 
-  class PosDataUDT extends UserDefinedType[PosData] {
 
-    override def sqlType: StructType = {
-      StructType(
-        Seq(
-          StructField("x",IntegerType,nullable=false),
-          StructField("y",IntegerType,nullable=false),
-          StructField("z",IntegerType,nullable=false),
-          StructField("pos",ArrayType(IntegerType,containsNull=false),nullable=false)
-        )
-      )
-    }
-
-    override def serialize(obj: Any): Row = {
-      val row = new GenericMutableRow(4)
-      obj match {
-        case pData: PosData =>
-          row.setInt(0,pData.getX)
-          row.setInt(1,pData.getY)
-          row.setInt(2,pData.getZ)
-          row.update(3,Seq(pData.getX,pData.getY,pData.getZ))
-        case _ =>
-          throw new RuntimeException("The given object:"+obj+" cannot be serialized by "+this)
-      }
-      row
-    }
-
-    override def deserialize(datum: Any): PosData = {
-      datum match {
-        case v: PosData =>
-          System.err.println("Something strange happened, or was never serialized")
-          v
-        case r: Row =>
-          require(r.length==4,"Wrong row-length given "+r.length+" instead of 4")
-          val x = r.getInt(0)
-          val y = r.getInt(1)
-          val z = r.getInt(2)
-          val pos = r.getAs[Iterable[Int]](3).toArray
-          PosData(x,y,z)
-      }
-    }
-
-    override def userClass: Class[PosData] = classOf[PosData]
-
-    override def equals(o: Any) = o match {
-      case v: PosData => true
-      case _ => false
-    }
-
-    override def hashCode = 5577269
-    override def typeName = "position"
-    override def asNullable = this
-
-  }
 }

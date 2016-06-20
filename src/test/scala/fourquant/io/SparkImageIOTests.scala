@@ -330,7 +330,7 @@ class SparkImageIOTests extends FunSuite with Matchers with ImageSparkInstance w
       }.toDF()
 
       nzDataFrame.registerTempTable("geopoints")
-      nzDataFrame.saveAsParquetFile("map_points")
+      nzDataFrame.write.parquet("map_points")
 
       tileCount shouldBe 200
       nzCount shouldBe 235439
