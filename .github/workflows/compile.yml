@@ -27,5 +27,3 @@ jobs:
         cd ..
     - name: compile
       run: mvn install -DskipTests -Dcheckstyle.skip
-    - name: test
-      run: mvn test
