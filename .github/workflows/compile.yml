@@ -19,6 +19,12 @@ jobs:
       run: |
         wget https://github.com/kmader/spark-imageio/releases/download/just_geo/geotiff-jai.jar
         mvn install:install-file -Dfile=geotiff-jai.jar -DgroupId=geotiff -DartifactId=geotiff-jai -Dversion=0.0 -Dpackaging=jar -DlocalRepositoryPath=
+    - name: install_spark_scifio
+      run: |
+        git clone https://github.com/kmader/spark-scifio
+        cd spark-scifio
+        mvn install -DskipTests
+        cd ..
     - name: compile
       run: mvn install -DskipTests -Dcheckstyle.skip
     - name: test
