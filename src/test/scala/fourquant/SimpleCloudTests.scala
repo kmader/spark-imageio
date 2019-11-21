@@ -39,8 +39,8 @@ test("Get Worker Readers") {
   for (curImg <- testImages) {
     test("Image Shape Analysis:"+curImg) {
       // setup s3
-      sc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", "AKIAJM4PPKISBYXFZGKA")
-      sc.hadoopConfiguration.set("fs.s3n.awsSecretAccessKey","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")
+      sc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", "")
+      sc.hadoopConfiguration.set("fs.s3n.awsSecretAccessKey","")
       // import
       import fourquant.arrays.BreezeOps._
       import fourquant.arrays.Positions._

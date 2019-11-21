@@ -60,9 +60,9 @@ trait ImageSparkInstance {
       tsc.addJar("/Users/mader/Dropbox/Informatics/spark-imageio/target/spark-imageio-1.0-SNAPSHOT-tests.jar")
     }
     if (useCloud) {
-      tsc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", "AKIAJM4PPKISBYXFZGKA")
+      tsc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", "")
       tsc.hadoopConfiguration.set("fs.s3n.awsSecretAccessKey",
-        "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")
+        "")
     }
     tsc
   }

@@ -340,9 +340,9 @@ class SparkImageIOTests extends FunSuite with Matchers with ImageSparkInstance w
   if (useCloud) {
     test("Cloud Test") {
       import TilingStrategies.Grid._
-      sc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", "AKIAJM4PPKISBYXFZGKA")
+      sc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", "")
       sc.hadoopConfiguration.set("fs.s3n.awsSecretAccessKey",
-        "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")
+        "")
 
       val tiledImage = sc.readTiledDoubleImage("s3n://geo-images/*.tif", 1000, 2000, 80)
       val fTile = tiledImage.first

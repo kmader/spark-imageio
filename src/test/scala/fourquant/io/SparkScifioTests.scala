@@ -41,9 +41,9 @@ class SparkScifioTests extends FunSuite with Matchers {
   }
 
   if (useCloud) {
-    sc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", "AKIAJM4PPKISBYXFZGKA")
+    sc.hadoopConfiguration.set("fs.s3n.awsAccessKeyId", "")
     sc.hadoopConfiguration.set("fs.s3n.awsSecretAccessKey",
-      "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")
+      "")
     test("Small Cloud Test") {
       import fourquant.tiles.TilingStrategies.Simple2DGrid
       import net.imglib2.`type`.numeric.real.FloatType
